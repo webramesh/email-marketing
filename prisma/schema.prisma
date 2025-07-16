@@ -9,6 +9,7 @@ generator client {
 datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
+  relationMode = "prisma"
 }
 
 // Multi-tenant models
@@ -30,6 +31,19 @@ model Tenant {
   supportTickets    SupportTicket[]
   subscriptionPlan  SubscriptionPlan?   @relation(fields: [subscriptionPlanId], references: [id])
   subscriptionPlanId String?
+  
+  // New relationships
+  campaignAnalytics CampaignAnalytics[]
+  emailEvents       EmailEvent[]
+  automationExecutions AutomationExecution[]
+  emailTemplates    EmailTemplate[]
+  segments          Segment[]
+  emailVerifications EmailVerification[]
+  bounceComplaints  BounceComplaint[]
+  apiKeys           ApiKey[]
+  webhooks          Webhook[]
+  payments          Payment[]
+  auditLogs         AuditLog[]
 
   @@map("tenants")
 }
@@ -69,8 +83,16 @@ model Campaign {
   updatedAt         DateTime    @updatedAt
   tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   tenantId          String
+  
+  // New relationships
+  analytics         CampaignAnalytics?
+  emailEvents       EmailEvent[]
+  bounceComplaints  BounceComplaint[]
+  template          EmailTemplate? @relation(fields: [templateId], references: [id])
+  templateId        String?
 
   @@index([tenantId])
+  @@index([templateId])
   @@map("campaigns")
 }
 
@@ -95,6 +117,11 @@ model Subscriber {
   tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   tenantId          String
   lists             ListSubscriber[]
+  
+  // New relationships
+  emailEvents       EmailEvent[]
+  automationExecutions AutomationExecution[]
+  bounceComplaints  BounceComplaint[]
 
   @@unique([email, tenantId])
   @@index([tenantId])
@@ -148,6 +175,10 @@ model Automation {
   updatedAt         DateTime    @updatedAt
   tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   tenantId          String
+  
+  // New relationships
+  workflowSteps     WorkflowStep[]
+  executions        AutomationExecution[]
 
   @@index([tenantId])
   @@map("automations")
@@ -246,4 +277,292 @@ model SubscriptionPlan {
   tenants           Tenant[]
 
   @@map("subscription_plans")
+}
+
+// Email Campaign Analytics and Tracking
+model CampaignAnalytics {
+  id                String      @id @default(cuid())
+  campaign          Campaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId        String      @unique
+  totalSent         Int         @default(0)
+  totalDelivered    Int         @default(0)
+  totalOpened       Int         @default(0)
+  totalClicked      Int         @default(0)
+  totalUnsubscribed Int         @default(0)
+  totalBounced      Int         @default(0)
+  totalComplained   Int         @default(0)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+
+  @@index([tenantId])
+  @@map("campaign_analytics")
+}
+
+model EmailEvent {
+  id                String      @id @default(cuid())
+  type              EmailEventType
+  campaign          Campaign?   @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId        String?
+  subscriber        Subscriber? @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+  subscriberId      String?
+  email             String
+  ipAddress         String?
+  userAgent         String?
+  location          Json?
+  metadata          Json?
+  createdAt         DateTime    @default(now())
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+
+  @@index([tenantId])
+  @@index([campaignId])
+  @@index([subscriberId])
+  @@index([type])
+  @@index([createdAt])
+  @@map("email_events")
+}
+
+enum EmailEventType {
+  SENT
+  DELIVERED
+  OPENED
+  CLICKED
+  BOUNCED
+  COMPLAINED
+  UNSUBSCRIBED
+  BLOCKED
+}
+
+// Workflow and Automation Models
+model WorkflowStep {
+  id                String      @id @default(cuid())
+  automation        Automation  @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  automationId      String
+  stepType          String
+  stepConfig        Json
+  position          Int
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([automationId])
+  @@map("workflow_steps")
+}
+
+model AutomationExecution {
+  id                String      @id @default(cuid())
+  automation        Automation  @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  automationId      String
+  subscriber        Subscriber  @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+  subscriberId      String
+  status            ExecutionStatus @default(PENDING)
+  currentStep       Int         @default(0)
+  executionData     Json?
+  startedAt         DateTime    @default(now())
+  completedAt       DateTime?
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+
+  @@index([tenantId])
+  @@index([automationId])
+  @@index([subscriberId])
+  @@index([status])
+  @@map("automation_executions")
+}
+
+enum ExecutionStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  PAUSED
+}
+
+// Email Templates
+model EmailTemplate {
+  id                String      @id @default(cuid())
+  name              String
+  subject           String
+  content           String      @db.LongText
+  preheader         String?
+  templateType      TemplateType @default(CAMPAIGN)
+  isPublic          Boolean     @default(false)
+  thumbnailUrl      String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+  campaigns         Campaign[]
+
+  @@index([tenantId])
+  @@index([templateType])
+  @@map("email_templates")
+}
+
+enum TemplateType {
+  CAMPAIGN
+  AUTOMATION
+  TRANSACTIONAL
+}
+
+// Subscriber Segments
+model Segment {
+  id                String      @id @default(cuid())
+  name              String
+  description       String?
+  conditions        Json
+  subscriberCount   Int         @default(0)
+  lastUpdated       DateTime    @default(now())
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+
+  @@index([tenantId])
+  @@map("segments")
+}
+
+// Email Verification
+model EmailVerification {
+  id                String      @id @default(cuid())
+  email             String
+  status            VerificationStatus
+  verificationData  Json?
+  verifiedAt        DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+
+  @@unique([email, tenantId])
+  @@index([tenantId])
+  @@index([status])
+  @@map("email_verifications")
+}
+
+enum VerificationStatus {
+  PENDING
+  VALID
+  INVALID
+  RISKY
+  UNKNOWN
+}
+
+// Bounce and Complaint Handling
+model BounceComplaint {
+  id                String      @id @default(cuid())
+  email             String
+  type              BounceComplaintType
+  reason            String?
+  bounceType        String?
+  campaign          Campaign?   @relation(fields: [campaignId], references: [id], onDelete: SetNull)
+  campaignId        String?
+  subscriber        Subscriber? @relation(fields: [subscriberId], references: [id], onDelete: SetNull)
+  subscriberId      String?
+  rawData           Json?
+  createdAt         DateTime    @default(now())
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+
+  @@index([tenantId])
+  @@index([email])
+  @@index([type])
+  @@index([campaignId])
+  @@map("bounce_complaints")
+}
+
+enum BounceComplaintType {
+  HARD_BOUNCE
+  SOFT_BOUNCE
+  COMPLAINT
+  BLOCK
+}
+
+// API Keys and Webhooks
+model ApiKey {
+  id                String      @id @default(cuid())
+  name              String
+  keyHash           String      @unique
+  permissions       Json
+  lastUsedAt        DateTime?
+  expiresAt         DateTime?
+  isActive          Boolean     @default(true)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+
+  @@index([tenantId])
+  @@index([keyHash])
+  @@map("api_keys")
+}
+
+model Webhook {
+  id                String      @id @default(cuid())
+  name              String
+  url               String
+  events            Json
+  secret            String?
+  isActive          Boolean     @default(true)
+  lastTriggeredAt   DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+
+  @@index([tenantId])
+  @@map("webhooks")
+}
+
+// Payment and Billing
+model Payment {
+  id                String      @id @default(cuid())
+  amount            Float
+  currency          String      @default("USD")
+  status            PaymentStatus
+  paymentMethod     String
+  paymentProvider   String
+  providerPaymentId String?
+  metadata          Json?
+  paidAt            DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+
+  @@index([tenantId])
+  @@index([status])
+  @@map("payments")
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+  CANCELLED
+}
+
+// Audit Logging
+model AuditLog {
+  id                String      @id @default(cuid())
+  action            String
+  resource          String
+  resourceId        String?
+  userId            String?
+  ipAddress         String?
+  userAgent         String?
+  changes           Json?
+  metadata          Json?
+  createdAt         DateTime    @default(now())
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+
+  @@index([tenantId])
+  @@index([action])
+  @@index([resource])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("audit_logs")
 }
