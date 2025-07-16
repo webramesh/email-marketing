@@ -1,0 +1,249 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// Multi-tenant models
+model Tenant {
+  id                String              @id @default(cuid())
+  name              String
+  subdomain         String              @unique
+  customDomain      String?             @unique
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  users             User[]
+  campaigns         Campaign[]
+  subscribers       Subscriber[]
+  lists             List[]
+  automations       Automation[]
+  sendingServers    SendingServer[]
+  domains           Domain[]
+  forms             Form[]
+  supportTickets    SupportTicket[]
+  subscriptionPlan  SubscriptionPlan?   @relation(fields: [subscriptionPlanId], references: [id])
+  subscriptionPlanId String?
+
+  @@map("tenants")
+}
+
+model User {
+  id                String      @id @default(cuid())
+  email             String
+  name              String?
+  password          String
+  role              UserRole    @default(USER)
+  mfaEnabled        Boolean     @default(false)
+  mfaSecret         String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+
+  @@unique([email, tenantId])
+  @@index([tenantId])
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  USER
+  SUPPORT
+}
+
+// Basic models for email marketing
+model Campaign {
+  id                String      @id @default(cuid())
+  name              String
+  subject           String
+  content           String      @db.LongText
+  status            CampaignStatus @default(DRAFT)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+
+  @@index([tenantId])
+  @@map("campaigns")
+}
+
+enum CampaignStatus {
+  DRAFT
+  SCHEDULED
+  SENDING
+  SENT
+  PAUSED
+  CANCELLED
+}
+
+model Subscriber {
+  id                String      @id @default(cuid())
+  email             String
+  firstName         String?
+  lastName          String?
+  status            SubscriberStatus @default(ACTIVE)
+  customFields      Json?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+  lists             ListSubscriber[]
+
+  @@unique([email, tenantId])
+  @@index([tenantId])
+  @@map("subscribers")
+}
+
+enum SubscriberStatus {
+  ACTIVE
+  UNSUBSCRIBED
+  BOUNCED
+  COMPLAINED
+  INVALID
+}
+
+model List {
+  id                String      @id @default(cuid())
+  name              String
+  description       String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+  subscribers       ListSubscriber[]
+
+  @@index([tenantId])
+  @@map("lists")
+}
+
+model ListSubscriber {
+  id                String      @id @default(cuid())
+  list              List        @relation(fields: [listId], references: [id], onDelete: Cascade)
+  listId            String
+  subscriber        Subscriber  @relation(fields: [subscriberId], references: [id], onDelete: Cascade)
+  subscriberId      String
+  createdAt         DateTime    @default(now())
+
+  @@unique([listId, subscriberId])
+  @@index([listId])
+  @@index([subscriberId])
+  @@map("list_subscribers")
+}
+
+model Automation {
+  id                String      @id @default(cuid())
+  name              String
+  status            AutomationStatus @default(DRAFT)
+  triggerType       String
+  triggerConfig     Json
+  workflowData      Json
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+
+  @@index([tenantId])
+  @@map("automations")
+}
+
+enum AutomationStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  COMPLETED
+}
+
+model SendingServer {
+  id                String      @id @default(cuid())
+  name              String
+  type              String
+  configuration     Json
+  isActive          Boolean     @default(true)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+
+  @@index([tenantId])
+  @@map("sending_servers")
+}
+
+model Domain {
+  id                String      @id @default(cuid())
+  name              String
+  isVerified        Boolean     @default(false)
+  dkimSelector      String?
+  dkimPrivateKey    String?     @db.LongText
+  dkimPublicKey     String?     @db.LongText
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+
+  @@unique([name, tenantId])
+  @@index([tenantId])
+  @@map("domains")
+}
+
+model Form {
+  id                String      @id @default(cuid())
+  name              String
+  formType          String
+  configuration     Json
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+
+  @@index([tenantId])
+  @@map("forms")
+}
+
+model SupportTicket {
+  id                String      @id @default(cuid())
+  subject           String
+  description       String      @db.LongText
+  status            TicketStatus @default(OPEN)
+  priority          TicketPriority @default(MEDIUM)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+
+  @@index([tenantId])
+  @@map("support_tickets")
+}
+
+enum TicketStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum TicketPriority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+model SubscriptionPlan {
+  id                String      @id @default(cuid())
+  name              String
+  price             Float
+  billingCycle      String
+  features          Json
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  tenants           Tenant[]
+
+  @@map("subscription_plans")
+}
