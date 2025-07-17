@@ -21,9 +21,9 @@ async function main() {
         maxCampaigns: 10,
         automationWorkflows: true,
         analytics: true,
-        support: 'email'
-      }
-    }
+        support: 'email',
+      },
+    },
   });
 
   const proPlan = await prisma.subscriptionPlan.upsert({
@@ -42,9 +42,9 @@ async function main() {
         analytics: true,
         advancedSegmentation: true,
         abTesting: true,
-        support: 'priority'
-      }
-    }
+        support: 'priority',
+      },
+    },
   });
 
   // Create demo tenant
@@ -56,18 +56,18 @@ async function main() {
       name: 'Demo Company',
       subdomain: 'demo',
       customDomain: null,
-      subscriptionPlanId: basicPlan.id
-    }
+      subscriptionPlanId: basicPlan.id,
+    },
   });
 
   // Create admin user for demo tenant
   const hashedPassword = await hash('admin123', 12);
   const adminUser = await prisma.user.upsert({
-    where: { 
+    where: {
       email_tenantId: {
         email: 'admin@demo.com',
-        tenantId: demoTenant.id
-      }
+        tenantId: demoTenant.id,
+      },
     },
     update: {},
     create: {
@@ -76,8 +76,29 @@ async function main() {
       password: hashedPassword,
       role: UserRole.ADMIN,
       mfaEnabled: false,
-      tenantId: demoTenant.id
-    }
+      tenantId: demoTenant.id,
+    },
+  });
+
+  // Create a user with MFA enabled for testing
+  const mfaUser = await prisma.user.upsert({
+    where: {
+      email_tenantId: {
+        email: 'mfa@demo.com',
+        tenantId: demoTenant.id,
+      },
+    },
+    update: {},
+    create: {
+      email: 'mfa@demo.com',
+      name: 'MFA Test User',
+      password: hashedPassword,
+      role: UserRole.USER,
+      mfaEnabled: true,
+      mfaSecret: 'JBSWY3DPEHPK3PXP', // Test secret for 'otpauth://totp/Test:mfa@demo.com?secret=JBSWY3DPEHPK3PXP&issuer=Test'
+      // Skip setting mfaBackupCodes for now as it's causing type errors
+      tenantId: demoTenant.id,
+    },
   });
 
   // Create sample subscribers for demo tenant
@@ -86,20 +107,20 @@ async function main() {
       email: 'john.doe@example.com',
       firstName: 'John',
       lastName: 'Doe',
-      customFields: { company: 'Tech Corp', industry: 'Technology' }
+      customFields: { company: 'Tech Corp', industry: 'Technology' },
     },
     {
       email: 'jane.smith@example.com',
       firstName: 'Jane',
       lastName: 'Smith',
-      customFields: { company: 'Marketing Inc', industry: 'Marketing' }
+      customFields: { company: 'Marketing Inc', industry: 'Marketing' },
     },
     {
       email: 'bob.wilson@example.com',
       firstName: 'Bob',
       lastName: 'Wilson',
-      customFields: { company: 'Sales LLC', industry: 'Sales' }
-    }
+      customFields: { company: 'Sales LLC', industry: 'Sales' },
+    },
   ];
 
   for (const subscriberData of sampleSubscribers) {
@@ -107,15 +128,15 @@ async function main() {
       where: {
         email_tenantId: {
           email: subscriberData.email,
-          tenantId: demoTenant.id
-        }
+          tenantId: demoTenant.id,
+        },
       },
       update: {},
       create: {
         ...subscriberData,
         status: SubscriberStatus.ACTIVE,
-        tenantId: demoTenant.id
-      }
+        tenantId: demoTenant.id,
+      },
     });
   }
 
@@ -127,8 +148,8 @@ async function main() {
       id: 'demo-list',
       name: 'Newsletter Subscribers',
       description: 'Main newsletter subscriber list',
-      tenantId: demoTenant.id
-    }
+      tenantId: demoTenant.id,
+    },
   });
 
   // Create sample campaign
@@ -149,8 +170,8 @@ async function main() {
         </html>
       `,
       status: CampaignStatus.DRAFT,
-      tenantId: demoTenant.id
-    }
+      tenantId: demoTenant.id,
+    },
   });
 
   // Create sample sending server configuration
@@ -167,12 +188,12 @@ async function main() {
         secure: false,
         auth: {
           user: 'demo@example.com',
-          pass: 'password'
-        }
+          pass: 'password',
+        },
       },
       isActive: true,
-      tenantId: demoTenant.id
-    }
+      tenantId: demoTenant.id,
+    },
   });
 
   // Create sample domain
@@ -180,26 +201,27 @@ async function main() {
     where: {
       name_tenantId: {
         name: 'demo.example.com',
-        tenantId: demoTenant.id
-      }
+        tenantId: demoTenant.id,
+      },
     },
     update: {},
     create: {
       name: 'demo.example.com',
       isVerified: false,
       dkimSelector: 'default',
-      tenantId: demoTenant.id
-    }
+      tenantId: demoTenant.id,
+    },
   });
 
   console.log('✅ Database seeding completed successfully!');
   console.log(`📊 Created tenant: ${demoTenant.name} (${demoTenant.subdomain})`);
   console.log(`👤 Created admin user: ${adminUser.email}`);
+  console.log(`� CCreated MFA test user: ${mfaUser.email}`);
   console.log(`📧 Created ${sampleSubscribers.length} sample subscribers`);
 }
 
 main()
-  .catch((e) => {
+  .catch(e => {
     console.error('❌ Error during seeding:', e);
     process.exit(1);
   })

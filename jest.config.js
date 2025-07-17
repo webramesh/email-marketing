@@ -10,6 +10,14 @@ const config = {
   transform: {
     '^.+\\.ts$': 'ts-jest',
   },
+  moduleNameMapper: {
+    '^@/(.*)$': '<rootDir>/src/$1',
+    '^next-auth$': '<rootDir>/src/__mocks__/next-auth.ts',
+    '^next-auth/(.*)$': '<rootDir>/src/__mocks__/next-auth.ts',
+  },
+  transformIgnorePatterns: [
+    'node_modules/(?!(next-auth|@auth/core)/)',
+  ],
   collectCoverageFrom: [
     'src/**/*.ts',
     '!src/**/*.d.ts',
