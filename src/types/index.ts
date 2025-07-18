@@ -72,6 +72,29 @@ export interface Subscriber {
   updatedAt: Date;
 }
 
+export interface SubscriberWithDetails extends Subscriber {
+  lists: Array<{
+    id: string;
+    list: {
+      id: string;
+      name: string;
+    };
+  }>;
+  emailEvents?: Array<{
+    id: string;
+    type: string;
+    createdAt: Date;
+    campaign?: {
+      id: string;
+      name: string;
+      subject: string;
+    };
+  }>;
+  _count?: {
+    emailEvents: number;
+  };
+}
+
 // Pagination types
 export interface PaginationParams {
   page: number;
@@ -94,6 +117,48 @@ export interface ApiResponse<T = any> {
   data?: T;
   error?: string;
   message?: string;
+}
+
+// Segment types
+export interface SegmentCondition {
+  id: string;
+  field: string;
+  operator: 'equals' | 'not_equals' | 'contains' | 'not_contains' | 'starts_with' | 'ends_with' | 'greater_than' | 'less_than' | 'in' | 'not_in' | 'is_empty' | 'is_not_empty' | 'between' | 'not_between';
+  value?: any;
+  secondValue?: any;
+}
+
+export interface SegmentConditionGroup {
+  id: string;
+  operator: 'AND' | 'OR';
+  conditions: SegmentCondition[];
+  groups?: SegmentConditionGroup[];
+}
+
+export interface SegmentConditions {
+  operator: 'AND' | 'OR';
+  rules: SegmentCondition[];
+  groups?: SegmentConditionGroup[];
+}
+
+export interface Segment {
+  id: string;
+  name: string;
+  description?: string | null;
+  conditions: any;
+  subscriberCount: number;
+  lastUpdated: Date;
+  createdAt: Date;
+  updatedAt: Date;
+  tenantId: string;
+}
+
+export interface SegmentField {
+  key: string;
+  label: string;
+  type: 'string' | 'number' | 'date' | 'boolean' | 'enum';
+  options?: Array<{ value: any; label: string }>;
+  operators: string[];
 }
 
 // Tenant context

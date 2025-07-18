@@ -1,6 +1,5 @@
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
-import crypto from 'crypto';
 import { PrismaClient } from '@/generated/prisma';
 
 const prisma = new PrismaClient();
@@ -51,10 +50,14 @@ const emailOTPs = new Map<string, EmailOTP>();
 const backupCodesStore = new Map<string, string[]>();
 
 /**
- * Hash a backup code for secure storage
+ * Hash a backup code for secure storage using Web Crypto API
  */
-function hashBackupCode(code: string): string {
-  return crypto.createHash('sha256').update(code).digest('hex');
+async function hashBackupCode(code: string): Promise<string> {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(code);
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
 /**
@@ -70,19 +73,20 @@ function generateOTPCode(length: number = EMAIL_OTP_LENGTH): string {
 }
 
 /**
- * Generate backup codes
+ * Generate backup codes using Web Crypto API
  */
 function generateBackupCodes(
   count: number = BACKUP_CODES_COUNT,
   length: number = BACKUP_CODES_LENGTH
 ): string[] {
-  return Array.from({ length: count }, () =>
-    crypto
-      .randomBytes(Math.ceil(length / 2))
-      .toString('hex')
+  return Array.from({ length: count }, () => {
+    const array = new Uint8Array(Math.ceil(length / 2));
+    crypto.getRandomValues(array);
+    return Array.from(array, byte => byte.toString(16).padStart(2, '0'))
+      .join('')
       .toUpperCase()
-      .slice(0, length)
-  );
+      .slice(0, length);
+  });
 }
 
 /**
@@ -118,7 +122,7 @@ async function verifyBackupCode(userId: string, tenantId: string, code: string):
           // Use type assertion to access mfaBackupCodes property
           const userBackupCodes = (user as any).mfaBackupCodes;
           if (Array.isArray(userBackupCodes)) {
-            const hashedCode = hashBackupCode(code);
+            const hashedCode = await hashBackupCode(code);
             const updatedCodes = userBackupCodes.filter((c: string) => c !== hashedCode);
 
             // Skip updating backup codes in the database for now
@@ -148,7 +152,7 @@ async function verifyBackupCode(userId: string, tenantId: string, code: string):
       return false;
     }
 
-    const hashedCode = hashBackupCode(code);
+    const hashedCode = await hashBackupCode(code);
     const dbIndex = userBackupCodes.indexOf(hashedCode);
 
     if (dbIndex === -1) {
@@ -292,7 +296,7 @@ export async function enableMFA(
     storeBackupCodes(userId, tenantId, codes);
 
     // Hash backup codes for database storage
-    const hashedBackupCodes = codes.map(code => hashBackupCode(code));
+    const hashedBackupCodes = await Promise.all(codes.map(code => hashBackupCode(code)));
 
     // Update user record with MFA data
     await prisma.user.update({

@@ -18,6 +18,11 @@ export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElemen
   isLoading?: boolean;
   
   /**
+   * Whether the button is in a loading state (alias for isLoading)
+   */
+  loading?: boolean;
+  
+  /**
    * Icon to display before the button text
    */
   leftIcon?: React.ReactNode;
@@ -43,6 +48,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       variant = 'primary',
       size = 'md',
       isLoading = false,
+      loading = false,
       leftIcon,
       rightIcon,
       fullWidth = false,
@@ -75,6 +81,9 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     // Width style
     const widthStyle = fullWidth ? 'w-full' : '';
     
+    // Determine if loading (support both props)
+    const isLoadingState = isLoading || loading;
+    
     return (
       <button
         className={cn(
@@ -82,14 +91,14 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
           variantStyles[variant],
           sizeStyles[size],
           widthStyle,
-          isLoading && 'opacity-70 cursor-not-allowed',
+          isLoadingState && 'opacity-70 cursor-not-allowed',
           className
         )}
-        disabled={disabled || isLoading}
+        disabled={disabled || isLoadingState}
         ref={ref}
         {...props}
       >
-        {isLoading && (
+        {isLoadingState && (
           <svg
             className="animate-spin -ml-1 mr-2 h-4 w-4 text-current"
             xmlns="http://www.w3.org/2000/svg"
@@ -111,9 +120,9 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
             ></path>
           </svg>
         )}
-        {!isLoading && leftIcon && <span className="mr-2">{leftIcon}</span>}
+        {!isLoadingState && leftIcon && <span className="mr-2">{leftIcon}</span>}
         {children}
-        {!isLoading && rightIcon && <span className="ml-2">{rightIcon}</span>}
+        {!isLoadingState && rightIcon && <span className="ml-2">{rightIcon}</span>}
       </button>
     );
   }
