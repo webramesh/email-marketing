@@ -1,31 +1,84 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { withPermission } from '@/lib/rbac/authorization'
 import { Resource, Action } from '@/lib/rbac/permissions'
-import { withMFA } from '@/lib/mfa-middleware'
+// withMFA import removed as it's not used in this file
+import { CampaignService } from '@/services/campaign.service'
+import { CreateCampaignRequest, CampaignStatus, CampaignType } from '@/types'
+import { z } from 'zod'
+
+// Validation schemas
+const createCampaignSchema = z.object({
+  name: z.string().min(1, 'Campaign name is required').max(255),
+  subject: z.string().min(1, 'Subject is required').max(255),
+  preheader: z.string().max(255).optional(),
+  content: z.string().optional(),
+  campaignType: z.enum([CampaignType.REGULAR, CampaignType.AB_TEST, CampaignType.AUTOMATION, CampaignType.TRANSACTIONAL]).optional(),
+  fromName: z.string().max(255).optional(),
+  fromEmail: z.string().email('Invalid email address').optional(),
+  replyToEmail: z.string().email('Invalid email address').optional(),
+  trackOpens: z.boolean().optional(),
+  trackClicks: z.boolean().optional(),
+  targetLists: z.array(z.string()).optional(),
+  targetSegments: z.array(z.string()).optional(),
+  templateId: z.string().optional(),
+  tags: z.array(z.string()).optional(),
+  notes: z.string().optional(),
+  scheduledAt: z.string().datetime('Invalid date format').optional()
+})
+
+const querySchema = z.object({
+  page: z.string().transform(Number).optional(),
+  limit: z.string().transform(Number).optional(),
+  status: z.enum([CampaignStatus.DRAFT, CampaignStatus.SCHEDULED, CampaignStatus.SENDING, CampaignStatus.SENT, CampaignStatus.PAUSED, CampaignStatus.CANCELLED]).optional(),
+  type: z.enum([CampaignType.REGULAR, CampaignType.AB_TEST, CampaignType.AUTOMATION, CampaignType.TRANSACTIONAL]).optional(),
+  search: z.string().optional(),
+  tags: z.string().transform(val => val.split(',')).optional()
+})
 
 /**
  * GET /api/campaigns
- * Get all campaigns for the current tenant
+ * Get all campaigns for the current tenant with pagination and filtering
  */
 async function getCampaigns(request: NextRequest) {
   try {
-    // Get tenant context from request
-    const tenantId = request.headers.get('X-Tenant-ID') || 'default-tenant'
+    const tenantId = request.headers.get('X-Tenant-ID')
+    if (!tenantId) {
+      return NextResponse.json(
+        { success: false, error: 'Tenant ID is required' },
+        { status: 400 }
+      )
+    }
+
+    // Parse and validate query parameters
+    const { searchParams } = new URL(request.url)
+    const queryParams = Object.fromEntries(searchParams.entries())
     
-    // In a real implementation, this would fetch campaigns from the database
-    // with proper tenant filtering using the tenantId
-    console.log(`Fetching campaigns for tenant: ${tenantId}`)
+    const validatedParams = querySchema.parse(queryParams)
     
+    const result = await CampaignService.getCampaigns(tenantId, {
+      page: validatedParams.page || 1,
+      limit: Math.min(validatedParams.limit || 10, 100), // Max 100 per page
+      status: validatedParams.status,
+      type: validatedParams.type,
+      search: validatedParams.search,
+      tags: validatedParams.tags
+    })
+
     return NextResponse.json({
       success: true,
-      data: [
-        { id: '1', name: 'Welcome Campaign', subject: 'Welcome to our platform!', tenantId },
-        { id: '2', name: 'Monthly Newsletter', subject: 'July Newsletter', tenantId },
-        { id: '3', name: 'Product Launch', subject: 'Introducing our new product', tenantId }
-      ]
+      data: result.data,
+      meta: result.meta
     })
   } catch (error) {
     console.error('Error fetching campaigns:', error)
+    
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid query parameters', details: error.issues },
+        { status: 400 }
+      )
+    }
+
     return NextResponse.json(
       { success: false, error: 'Failed to fetch campaigns' },
       { status: 500 }
@@ -39,50 +92,44 @@ async function getCampaigns(request: NextRequest) {
  */
 async function createCampaign(request: NextRequest) {
   try {
-    const body = await request.json()
-    
-    // In a real implementation, this would validate and save the campaign to the database
-    return NextResponse.json({
-      success: true,
-      data: {
-        id: '4',
-        name: body.name || 'New Campaign',
-        subject: body.subject || 'Campaign Subject',
-        createdAt: new Date().toISOString()
-      }
-    })
-  } catch (error) {
-    return NextResponse.json(
-      { success: false, error: 'Invalid request body' },
-      { status: 400 }
-    )
-  }
-}
-
-/**
- * DELETE /api/campaigns
- * Delete a campaign by ID
- */
-async function deleteCampaign(request: NextRequest) {
-  try {
-    const { searchParams } = new URL(request.url)
-    const id = searchParams.get('id')
-    
-    if (!id) {
+    const tenantId = request.headers.get('X-Tenant-ID')
+    if (!tenantId) {
       return NextResponse.json(
-        { success: false, error: 'Campaign ID is required' },
+        { success: false, error: 'Tenant ID is required' },
         { status: 400 }
       )
     }
+
+    const body = await request.json()
     
-    // In a real implementation, this would delete the campaign from the database
+    // Validate request body
+    const validatedData = createCampaignSchema.parse(body)
+    
+    // Convert scheduledAt string to Date if provided
+    const campaignData: CreateCampaignRequest = {
+      ...validatedData,
+      scheduledAt: validatedData.scheduledAt ? new Date(validatedData.scheduledAt) : undefined
+    }
+    
+    const campaign = await CampaignService.createCampaign(tenantId, campaignData)
+    
     return NextResponse.json({
       success: true,
-      message: `Campaign ${id} deleted successfully`
-    })
+      data: campaign,
+      message: 'Campaign created successfully'
+    }, { status: 201 })
   } catch (error) {
+    console.error('Error creating campaign:', error)
+    
+    if (error instanceof z.ZodError) {
+      return NextResponse.json(
+        { success: false, error: 'Invalid request data', details: error.issues },
+        { status: 400 }
+      )
+    }
+
     return NextResponse.json(
-      { success: false, error: 'Failed to delete campaign' },
+      { success: false, error: 'Failed to create campaign' },
       { status: 500 }
     )
   }
@@ -91,5 +138,3 @@ async function deleteCampaign(request: NextRequest) {
 // Apply RBAC middleware to route handlers
 export const GET = withPermission(getCampaigns, Resource.CAMPAIGNS, Action.READ)
 export const POST = withPermission(createCampaign, Resource.CAMPAIGNS, Action.CREATE)
-// Apply both RBAC and MFA middleware for sensitive operations
-export const DELETE = withMFA(withPermission(deleteCampaign, Resource.CAMPAIGNS, Action.DELETE))

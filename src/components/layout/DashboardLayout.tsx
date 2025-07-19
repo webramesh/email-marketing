@@ -4,6 +4,7 @@ import React, { useState } from 'react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { signOut } from 'next-auth/react';
 import { Avatar } from '../ui/Avatar';
 import { Badge } from '../ui/Badge';
 import { Dropdown } from '../ui/Dropdown';
@@ -160,6 +161,13 @@ function Sidebar() {
     { name: 'Analytics', href: '/dashboard/analytics', icon: ChartIcon },
     { name: 'Settings', href: '/dashboard/settings', icon: SettingsIcon },
   ];
+
+  const handleNavClick = (href: string) => {
+    // Force refresh for campaigns page to reset view state
+    if (href === '/dashboard/campaigns' && pathname === '/dashboard/campaigns') {
+      window.location.href = href;
+    }
+  };
   
   return (
     <nav className="space-y-6">
@@ -168,6 +176,7 @@ function Sidebar() {
           <Link
             key={item.name}
             href={item.href}
+            onClick={() => handleNavClick(item.href)}
             className={cn(
               'group flex items-center px-3 py-2 text-sm font-medium rounded-md',
               pathname === item.href || pathname?.startsWith(`${item.href}/`)
@@ -346,13 +355,15 @@ function UserMenu() {
     { label: 'Sign out', value: 'signout' },
   ];
   
-  const handleMenuItemClick = (value: string) => {
+  const handleMenuItemClick = async (value: string) => {
     setIsOpen(false);
     
     // Handle menu item actions
     if (value === 'signout') {
-      // Sign out logic
-      console.log('Sign out');
+      await signOut({ 
+        callbackUrl: '/',
+        redirect: true 
+      });
     }
   };
   

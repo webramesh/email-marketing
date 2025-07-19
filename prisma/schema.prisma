@@ -56,7 +56,7 @@ model User {
   role              UserRole    @default(USER)
   mfaEnabled        Boolean     @default(false)
   mfaSecret         String?
-  mfaBackupCodes    String[]    @default([])
+  mfaBackupCodes    Json?
   mfaLastVerified   DateTime?
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
@@ -79,22 +79,69 @@ model Campaign {
   id                String      @id @default(cuid())
   name              String
   subject           String
+  preheader         String?
   content           String      @db.LongText
+  plainTextContent  String?     @db.LongText
   status            CampaignStatus @default(DRAFT)
+  campaignType      CampaignType @default(REGULAR)
+  
+  // Scheduling
+  scheduledAt       DateTime?
+  sentAt            DateTime?
+  
+  // Settings
+  fromName          String?
+  fromEmail         String?
+  replyToEmail      String?
+  trackOpens        Boolean     @default(true)
+  trackClicks       Boolean     @default(true)
+  
+  // A/B Testing
+  isAbTest          Boolean     @default(false)
+  abTestSettings    Json?
+  
+  // Lists and Segments
+  targetLists       Json?       // Array of list IDs
+  targetSegments    Json?       // Array of segment IDs
+  
+  // Template and Design
+  templateData      Json?       // Email builder data
+  customCss         String?     @db.LongText
+  
+  // Statistics (cached for performance)
+  totalRecipients   Int         @default(0)
+  totalSent         Int         @default(0)
+  totalDelivered    Int         @default(0)
+  totalOpened       Int         @default(0)
+  totalClicked      Int         @default(0)
+  totalUnsubscribed Int         @default(0)
+  totalBounced      Int         @default(0)
+  totalComplained   Int         @default(0)
+  
+  // Metadata
+  tags              Json?       // Array of tags for organization
+  notes             String?     @db.LongText
+  
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
   tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   tenantId          String
   
-  // New relationships
+  // Relationships
   analytics         CampaignAnalytics?
   emailEvents       EmailEvent[]
   bounceComplaints  BounceComplaint[]
   template          EmailTemplate? @relation(fields: [templateId], references: [id])
   templateId        String?
+  
+  // A/B Test variants
+  abTestVariants    CampaignVariant[]
 
   @@index([tenantId])
   @@index([templateId])
+  @@index([status])
+  @@index([campaignType])
+  @@index([scheduledAt])
   @@map("campaigns")
 }
 
@@ -105,6 +152,45 @@ enum CampaignStatus {
   SENT
   PAUSED
   CANCELLED
+}
+
+enum CampaignType {
+  REGULAR
+  AB_TEST
+  AUTOMATION
+  TRANSACTIONAL
+}
+
+// A/B Test Campaign Variants
+model CampaignVariant {
+  id                String      @id @default(cuid())
+  campaign          Campaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId        String
+  name              String      // e.g., "Variant A", "Variant B"
+  subject           String
+  preheader         String?
+  content           String      @db.LongText
+  templateData      Json?
+  percentage        Int         @default(50) // Percentage of audience for this variant
+  
+  // Statistics for this variant
+  totalSent         Int         @default(0)
+  totalDelivered    Int         @default(0)
+  totalOpened       Int         @default(0)
+  totalClicked      Int         @default(0)
+  totalUnsubscribed Int         @default(0)
+  totalBounced      Int         @default(0)
+  totalComplained   Int         @default(0)
+  
+  // A/B test results
+  conversionRate    Float       @default(0)
+  isWinner          Boolean     @default(false)
+  
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([campaignId])
+  @@map("campaign_variants")
 }
 
 model Subscriber {

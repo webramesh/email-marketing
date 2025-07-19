@@ -40,15 +40,141 @@ export enum CampaignStatus {
   CANCELLED = 'CANCELLED',
 }
 
+export enum CampaignType {
+  REGULAR = 'REGULAR',
+  AB_TEST = 'AB_TEST',
+  AUTOMATION = 'AUTOMATION',
+  TRANSACTIONAL = 'TRANSACTIONAL',
+}
+
 export interface Campaign {
   id: string;
   name: string;
   subject: string;
+  preheader?: string | null;
   content: string;
+  plainTextContent?: string | null;
   status: CampaignStatus;
+  campaignType: CampaignType;
+  
+  // Scheduling
+  scheduledAt?: Date | null;
+  sentAt?: Date | null;
+  
+  // Settings
+  fromName?: string | null;
+  fromEmail?: string | null;
+  replyToEmail?: string | null;
+  trackOpens: boolean;
+  trackClicks: boolean;
+  
+  // A/B Testing
+  isAbTest: boolean;
+  abTestSettings?: any;
+  
+  // Lists and Segments
+  targetLists?: string[] | null;
+  targetSegments?: string[] | null;
+  
+  // Template and Design
+  templateData?: any;
+  customCss?: string | null;
+  
+  // Statistics
+  totalRecipients: number;
+  totalSent: number;
+  totalDelivered: number;
+  totalOpened: number;
+  totalClicked: number;
+  totalUnsubscribed: number;
+  totalBounced: number;
+  totalComplained: number;
+  
+  // Metadata
+  tags?: string[] | null;
+  notes?: string | null;
+  
   tenantId: string;
+  templateId?: string | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface CampaignWithDetails extends Campaign {
+  template?: {
+    id: string;
+    name: string;
+    subject: string;
+  } | null;
+  abTestVariants?: CampaignVariant[];
+  analytics?: CampaignAnalytics;
+}
+
+export interface CampaignVariant {
+  id: string;
+  campaignId: string;
+  name: string;
+  subject: string;
+  preheader?: string | null;
+  content: string;
+  templateData?: any;
+  percentage: number;
+  
+  // Statistics
+  totalSent: number;
+  totalDelivered: number;
+  totalOpened: number;
+  totalClicked: number;
+  totalUnsubscribed: number;
+  totalBounced: number;
+  totalComplained: number;
+  
+  // A/B test results
+  conversionRate: number;
+  isWinner: boolean;
+  
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface CampaignAnalytics {
+  id: string;
+  campaignId: string;
+  totalSent: number;
+  totalDelivered: number;
+  totalOpened: number;
+  totalClicked: number;
+  totalUnsubscribed: number;
+  totalBounced: number;
+  totalComplained: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+// Campaign creation and update DTOs
+export interface CreateCampaignRequest {
+  name: string;
+  subject: string;
+  preheader?: string;
+  content?: string;
+  campaignType?: CampaignType;
+  fromName?: string;
+  fromEmail?: string;
+  replyToEmail?: string;
+  trackOpens?: boolean;
+  trackClicks?: boolean;
+  targetLists?: string[];
+  targetSegments?: string[];
+  templateId?: string;
+  tags?: string[];
+  notes?: string;
+  scheduledAt?: Date;
+}
+
+export interface UpdateCampaignRequest extends Partial<CreateCampaignRequest> {
+  status?: CampaignStatus;
+  templateData?: any;
+  customCss?: string;
 }
 
 // Subscriber types

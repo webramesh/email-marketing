@@ -3,6 +3,15 @@ import { auth } from '../auth'
 import { hasPermission, Resource, Action } from './permissions'
 import { UserRole, TenantContext } from '@/types'
 
+// Type declaration for RequestInit duplex option
+declare global {
+  interface RequestInit {
+    duplex?: 'half' | 'full'
+  }
+}
+
+type RequestDuplex = 'half' | 'full'
+
 // Get tenant context from request headers or session
 async function getTenantContext(request: NextRequest): Promise<TenantContext | null> {
   // In a real implementation, this would extract tenant information from:
@@ -99,14 +108,16 @@ export function withPermission<T extends any[]>(
       
       if (mockUserId && mockTenantId) {
         // Add tenant ID to headers for downstream services
+        const headers = new Headers(request.headers)
+        headers.set('X-Tenant-ID', mockTenantId)
+        
         const requestWithTenant = new Request(request.url, {
           method: request.method,
-          headers: new Headers(request.headers),
+          headers,
           body: request.body,
           signal: request.signal,
+          ...(request.body && { duplex: 'half' as RequestDuplex })
         })
-        
-        requestWithTenant.headers.set('X-Tenant-ID', mockTenantId)
         
         return handler(requestWithTenant as NextRequest, ...args)
       }
@@ -121,15 +132,16 @@ export function withPermission<T extends any[]>(
     const tenantContext = await getTenantContext(request)
     if (tenantContext?.tenantId) {
       // Clone the request and add tenant ID header
+      const headers = new Headers(request.headers)
+      headers.set('X-Tenant-ID', tenantContext.tenantId)
+      
       const requestWithTenant = new Request(request.url, {
         method: request.method,
-        headers: new Headers(request.headers),
+        headers,
         body: request.body,
         signal: request.signal,
+        ...(request.body && { duplex: 'half' as RequestDuplex })
       })
-      
-      // Add tenant ID to headers for downstream services
-      requestWithTenant.headers.set('X-Tenant-ID', tenantContext.tenantId)
       
       // Pass the modified request to the handler
       return handler(requestWithTenant as NextRequest, ...args)
