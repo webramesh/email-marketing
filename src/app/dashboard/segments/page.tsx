@@ -288,7 +288,7 @@ export default function SegmentsPage() {
 
   if (viewMode === 'analytics' && selectedSegmentAnalytics) {
     return (
-      <div className="container mx-auto px-4 py-8">
+      <>
         <div className="mb-4">
           <button
             onClick={() => {
@@ -305,25 +305,23 @@ export default function SegmentsPage() {
           onRefresh={() => console.log('Refreshing analytics')}
           isLoading={isLoading}
         />
-      </div>
+      </>
     )
   }
 
   return (
-    <div className="container mx-auto px-4 py-8">
-      <SegmentList
-        segments={segments}
-        fields={fields}
-        onRefresh={handleRefresh}
-        onCreateSegment={handleCreateSegment}
-        onUpdateSegment={handleUpdateSegment}
-        onDeleteSegment={handleDeleteSegment}
-        onPreviewSegment={handlePreviewSegment}
-        onRefreshSegmentCount={handleRefreshSegmentCount}
-        onViewSegmentSubscribers={handleViewSegmentSubscribers}
-        onViewSegmentAnalytics={handleViewSegmentAnalytics}
-        isLoading={isLoading}
-      />
-    </div>
+    <SegmentList
+      segments={segments}
+      fields={fields}
+      onRefresh={handleRefresh}
+      onCreateSegment={handleCreateSegment}
+      onUpdateSegment={handleUpdateSegment}
+      onDeleteSegment={handleDeleteSegment}
+      onPreviewSegment={handlePreviewSegment}
+      onRefreshSegmentCount={handleRefreshSegmentCount}
+      onViewSegmentSubscribers={handleViewSegmentSubscribers}
+      onViewSegmentAnalytics={handleViewSegmentAnalytics}
+      isLoading={isLoading}
+    />
   )
 }

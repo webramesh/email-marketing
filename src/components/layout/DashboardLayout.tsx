@@ -152,13 +152,13 @@ function Sidebar() {
   
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: HomeIcon },
-    { name: 'Campaigns', href: '/campaigns', icon: EnvelopeIcon },
-    { name: 'Subscribers', href: '/subscribers', icon: UsersIcon },
-    { name: 'Lists', href: '/lists', icon: ListIcon },
-    { name: 'Automations', href: '/automations', icon: AutomationIcon },
-    { name: 'Forms', href: '/forms', icon: FormIcon },
-    { name: 'Analytics', href: '/analytics', icon: ChartIcon },
-    { name: 'Settings', href: '/settings', icon: SettingsIcon },
+    { name: 'Campaigns', href: '/dashboard/campaigns', icon: EnvelopeIcon },
+    { name: 'Subscribers', href: '/dashboard/subscribers', icon: UsersIcon },
+    { name: 'Lists', href: '/dashboard/lists', icon: ListIcon },
+    { name: 'Automations', href: '/dashboard/automations', icon: AutomationIcon },
+    { name: 'Forms', href: '/dashboard/forms', icon: FormIcon },
+    { name: 'Analytics', href: '/dashboard/analytics', icon: ChartIcon },
+    { name: 'Settings', href: '/dashboard/settings', icon: SettingsIcon },
   ];
   
   return (

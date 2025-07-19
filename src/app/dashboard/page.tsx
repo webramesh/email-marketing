@@ -1,5 +1,4 @@
 import React from 'react';
-import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { PageHeader } from '@/components/layout/PageHeader';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
@@ -10,7 +9,7 @@ import { Badge } from '@/components/ui/Badge';
  */
 export default function DashboardPage() {
   return (
-    <DashboardLayout>
+    <>
       <PageHeader
         title="Dashboard"
         description="Welcome to your email marketing dashboard"
@@ -131,7 +130,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
-    </DashboardLayout>
+    </>
   );
 }
 

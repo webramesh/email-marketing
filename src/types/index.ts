@@ -119,6 +119,47 @@ export interface ApiResponse<T = any> {
   message?: string;
 }
 
+// List types
+export interface List {
+  id: string;
+  name: string;
+  description?: string | null;
+  tenantId: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ListWithDetails extends List {
+  subscribers: Array<{
+    id: string;
+    subscriber: {
+      id: string;
+      email: string;
+      firstName?: string | null;
+      lastName?: string | null;
+      status: SubscriberStatus;
+    };
+    createdAt: Date;
+  }>;
+  _count?: {
+    subscribers: number;
+  };
+}
+
+export interface ListAnalytics {
+  id: string;
+  listId: string;
+  totalSubscribers: number;
+  activeSubscribers: number;
+  unsubscribedSubscribers: number;
+  bouncedSubscribers: number;
+  complainedSubscribers: number;
+  invalidSubscribers: number;
+  growthRate: number;
+  engagementRate: number;
+  lastUpdated: Date;
+}
+
 // Segment types
 export interface SegmentCondition {
   id: string;
