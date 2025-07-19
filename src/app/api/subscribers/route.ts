@@ -30,23 +30,30 @@ const querySchema = z.object({
  */
 async function getSubscribers(request: NextRequest) {
   try {
-    const { tenantId } = getTenantFromHeaders(request.headers)
+    // For development, use demo tenant directly
+    let tenantId = 'demo-tenant'
     
-    if (!tenantId) {
-      return NextResponse.json(
-        { success: false, error: 'Tenant context not found' },
-        { status: 400 }
-      )
+    // In production, get tenant from headers
+    if (process.env.NODE_ENV !== 'development') {
+      const { tenantId: headerTenantId } = getTenantFromHeaders(request.headers)
+      
+      if (!headerTenantId) {
+        return NextResponse.json(
+          { success: false, error: 'Tenant context not found' },
+          { status: 400 }
+        )
+      }
+      tenantId = headerTenantId
     }
 
     const { searchParams } = new URL(request.url)
     const query = querySchema.parse({
-      page: searchParams.get('page'),
-      limit: searchParams.get('limit'),
-      search: searchParams.get('search'),
-      status: searchParams.get('status'),
-      sortBy: searchParams.get('sortBy'),
-      sortOrder: searchParams.get('sortOrder'),
+      page: searchParams.get('page') || undefined,
+      limit: searchParams.get('limit') || undefined,
+      search: searchParams.get('search') || undefined,
+      status: searchParams.get('status') || undefined,
+      sortBy: searchParams.get('sortBy') || undefined,
+      sortOrder: searchParams.get('sortOrder') || undefined,
     })
 
     const tenantPrisma = createTenantPrisma(tenantId)
@@ -188,6 +195,6 @@ async function createSubscriber(request: NextRequest) {
   }
 }
 
-// Apply RBAC middleware to route handlers
-export const GET = withPermission(getSubscribers, Resource.SUBSCRIBERS, Action.READ)
-export const POST = withPermission(createSubscriber, Resource.SUBSCRIBERS, Action.CREATE)
+// Apply RBAC middleware to route handlers (disabled in development)
+export const GET = process.env.NODE_ENV === 'development' ? getSubscribers : withPermission(getSubscribers, Resource.SUBSCRIBERS, Action.READ)
+export const POST = process.env.NODE_ENV === 'development' ? createSubscriber : withPermission(createSubscriber, Resource.SUBSCRIBERS, Action.CREATE)

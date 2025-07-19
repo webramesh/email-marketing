@@ -92,6 +92,26 @@ export function withPermission<T extends any[]>(
   action: Action
 ) {
   return async (request: NextRequest, ...args: T): Promise<NextResponse> => {
+    // In development mode, bypass RBAC if mock headers are present
+    if (process.env.NODE_ENV === 'development') {
+      const mockUserId = request.headers.get('x-mock-user-id')
+      const mockTenantId = request.headers.get('x-mock-tenant-id')
+      
+      if (mockUserId && mockTenantId) {
+        // Add tenant ID to headers for downstream services
+        const requestWithTenant = new Request(request.url, {
+          method: request.method,
+          headers: new Headers(request.headers),
+          body: request.body,
+          signal: request.signal,
+        })
+        
+        requestWithTenant.headers.set('X-Tenant-ID', mockTenantId)
+        
+        return handler(requestWithTenant as NextRequest, ...args)
+      }
+    }
+    
     const permissionResponse = await enforcePermission(request, resource, action)
     if (permissionResponse) {
       return permissionResponse

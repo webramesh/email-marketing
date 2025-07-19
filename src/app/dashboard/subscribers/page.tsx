@@ -320,6 +320,7 @@ export default function SubscribersPage() {
           data={subscribers}
           loading={loading}
           error={error}
+          emptyMessage="No subscribers found. Click 'Add Subscriber' to get started."
           pagination={{
             currentPage: page,
             totalPages: meta?.totalPages || 1,

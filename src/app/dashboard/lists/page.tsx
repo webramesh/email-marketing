@@ -4,7 +4,12 @@ import { headers } from 'next/headers'
 
 export default async function ListsPage() {
   const headersList = await headers()
-  const { tenantId } = getTenantFromHeaders(headersList)
+  let { tenantId } = getTenantFromHeaders(headersList)
+
+  // In development mode, use demo tenant if no tenant is found
+  if (!tenantId && process.env.NODE_ENV === 'development') {
+    tenantId = 'demo-tenant'
+  }
 
   if (!tenantId) {
     return (

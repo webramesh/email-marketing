@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth"
 import { enforceMFA, mfaPageMiddleware } from "@/lib/mfa-middleware"
 import { rbacPageMiddleware } from "@/lib/rbac/authorization"
 import { Resource, Action } from "@/lib/rbac/permissions"
+import { tenantMiddleware, middlewareConfigs } from "@/lib/tenant/middleware"
 
 // Define resource paths for RBAC enforcement
 const resourcePathMap = {
@@ -77,6 +78,40 @@ export default async function middleware(request: NextRequest) {
   // Allow access to auth pages without authentication
   if (pathname.startsWith("/auth/")) {
     return NextResponse.next()
+  }
+
+  // In development, allow access to dashboard and API for testing
+  if (process.env.NODE_ENV === 'development' && (pathname.startsWith("/dashboard") || pathname.startsWith("/api/"))) {
+    console.log('Development mode: bypassing auth for', pathname)
+    
+    // Create a mock session for development
+    const mockHeaders = new Headers(request.headers)
+    mockHeaders.set('x-mock-user-id', 'demo-user')
+    mockHeaders.set('x-mock-tenant-id', 'demo-tenant')
+    
+    console.log('Setting mock headers:', {
+      'x-mock-user-id': mockHeaders.get('x-mock-user-id'),
+      'x-mock-tenant-id': mockHeaders.get('x-mock-tenant-id')
+    })
+    
+    return NextResponse.next({
+      request: {
+        headers: mockHeaders,
+      },
+    })
+  }
+
+  // Apply tenant middleware for API routes and dashboard
+  if (pathname.startsWith("/api/") || pathname.startsWith("/dashboard")) {
+    const tenantResponse = await tenantMiddleware(request, middlewareConfigs.api)
+    if (tenantResponse) {
+      // If tenant middleware returns an error response, return it immediately
+      if (tenantResponse.status >= 400) {
+        return tenantResponse
+      }
+      // If it's a successful NextResponse.next(), we need to continue with the modified headers
+      // The tenant middleware has already set the headers we need
+    }
   }
 
   // Check authentication

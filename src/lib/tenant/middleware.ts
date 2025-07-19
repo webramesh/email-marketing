@@ -101,6 +101,18 @@ export function getTenantFromHeaders(headers: Headers): {
   subdomain?: string;
   customDomain?: string;
 } {
+  // In development mode, check for mock tenant ID first
+  if (process.env.NODE_ENV === 'development') {
+    const mockTenantId = headers.get('x-mock-tenant-id');
+    if (mockTenantId) {
+      return {
+        tenantId: mockTenantId,
+        subdomain: 'demo',
+        customDomain: undefined,
+      };
+    }
+  }
+  
   return {
     tenantId: headers.get('x-tenant-id') || undefined,
     subdomain: headers.get('x-tenant-subdomain') || undefined,

@@ -45,12 +45,17 @@ export function useSubscribers(options: UseSubscribersOptions = {}) {
       const result = await response.json()
 
       if (!response.ok) {
+        // Handle specific error cases
+        if (response.status === 400 && result.error?.includes('Tenant context not found')) {
+          throw new Error('Unable to load tenant data. Please refresh the page or contact support.')
+        }
         throw new Error(result.error || 'Failed to fetch subscribers')
       }
 
-      setSubscribers(result.data)
+      setSubscribers(result.data || [])
       setMeta(result.meta)
     } catch (err) {
+      console.error('Error fetching subscribers:', err)
       setError(err instanceof Error ? err.message : 'An error occurred')
     } finally {
       setLoading(false)
@@ -64,9 +69,29 @@ export function useSubscribers(options: UseSubscribersOptions = {}) {
 
       if (response.ok) {
         setStats(result.data)
+      } else {
+        console.error('Failed to fetch subscriber stats:', result.error)
+        // Set default stats if API fails
+        setStats({
+          total: 0,
+          active: 0,
+          unsubscribed: 0,
+          bounced: 0,
+          complained: 0,
+          invalid: 0
+        })
       }
     } catch (err) {
       console.error('Failed to fetch subscriber stats:', err)
+      // Set default stats if API fails
+      setStats({
+        total: 0,
+        active: 0,
+        unsubscribed: 0,
+        bounced: 0,
+        complained: 0,
+        invalid: 0
+      })
     }
   }, [])
 

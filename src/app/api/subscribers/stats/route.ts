@@ -11,13 +11,20 @@ import { SubscriberStatus } from '@/types'
  */
 async function getSubscriberStats(request: NextRequest) {
   try {
-    const { tenantId } = getTenantFromHeaders(request.headers)
+    // For development, use demo tenant directly
+    let tenantId = 'demo-tenant'
     
-    if (!tenantId) {
-      return NextResponse.json(
-        { success: false, error: 'Tenant context not found' },
-        { status: 400 }
-      )
+    // In production, get tenant from headers
+    if (process.env.NODE_ENV !== 'development') {
+      const { tenantId: headerTenantId } = getTenantFromHeaders(request.headers)
+      
+      if (!headerTenantId) {
+        return NextResponse.json(
+          { success: false, error: 'Tenant context not found' },
+          { status: 400 }
+        )
+      }
+      tenantId = headerTenantId
     }
 
     const tenantPrisma = createTenantPrisma(tenantId)
@@ -53,5 +60,5 @@ async function getSubscriberStats(request: NextRequest) {
   }
 }
 
-// Apply RBAC middleware to route handler
-export const GET = withPermission(getSubscriberStats, Resource.SUBSCRIBERS, Action.READ)
+// Apply RBAC middleware to route handler (disabled in development)
+export const GET = process.env.NODE_ENV === 'development' ? getSubscriberStats : withPermission(getSubscriberStats, Resource.SUBSCRIBERS, Action.READ)
