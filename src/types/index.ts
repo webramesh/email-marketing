@@ -328,6 +328,68 @@ export interface SegmentField {
   operators: string[];
 }
 
+// Email Verification types
+export enum VerificationStatus {
+  PENDING = 'PENDING',
+  VALID = 'VALID',
+  INVALID = 'INVALID',
+  RISKY = 'RISKY',
+  UNKNOWN = 'UNKNOWN',
+}
+
+export interface EmailVerification {
+  id: string;
+  email: string;
+  status: VerificationStatus;
+  verificationData?: Record<string, any> | null;
+  verifiedAt?: Date | null;
+  tenantId: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface EmailValidationResult {
+  email: string;
+  isValid: boolean;
+  status: VerificationStatus;
+  reason?: string;
+  score?: number;
+  details: {
+    syntax: boolean;
+    domain: boolean;
+    mailbox?: boolean;
+    disposable?: boolean;
+    role?: boolean;
+    free?: boolean;
+    mx?: boolean;
+    smtp?: boolean;
+  };
+  provider?: string;
+  suggestion?: string;
+}
+
+export interface BulkVerificationJob {
+  id: string;
+  tenantId: string;
+  totalEmails: number;
+  processedEmails: number;
+  validEmails: number;
+  invalidEmails: number;
+  riskyEmails: number;
+  unknownEmails: number;
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  startedAt: Date;
+  completedAt?: Date;
+  errorMessage?: string;
+}
+
+export interface BulkVerificationRequest {
+  emails: string[];
+  listId?: string;
+  removeInvalid?: boolean;
+  removeRisky?: boolean;
+}
+
 // Tenant context
 export interface TenantContext {
   tenant: Tenant | null;

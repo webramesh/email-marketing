@@ -238,8 +238,9 @@ function Breadcrumb() {
   const segments = pathname
     .split('/')
     .filter(Boolean)
+    .filter(segment => segment !== 'dashboard') // Remove 'dashboard' to avoid duplication
     .map((segment) => ({
-      name: segment.charAt(0).toUpperCase() + segment.slice(1),
+      name: segment.charAt(0).toUpperCase() + segment.slice(1).replace('-', ' '),
       href: `/${segment}`,
     }));
   
