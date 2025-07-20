@@ -285,12 +285,23 @@ model SendingServer {
   type              String
   configuration     Json
   isActive          Boolean     @default(true)
+  priority          Int         @default(1)
+  dailyLimit        Int?
+  hourlyLimit       Int?
+  dailySent         Int         @default(0)
+  hourlySent        Int         @default(0)
+  totalSent         Int         @default(0)
+  totalFailed       Int         @default(0)
+  lastUsedAt        DateTime?
+  lastResetAt       DateTime    @default(now())
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
   tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   tenantId          String
 
   @@index([tenantId])
+  @@index([isActive])
+  @@index([priority])
   @@map("sending_servers")
 }
 
