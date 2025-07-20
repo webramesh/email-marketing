@@ -46,11 +46,7 @@ export class SendingServerService {
     return server;
   }
 
-  async updateSendingServer(
-    serverId: string,
-    tenantId: string,
-    data: UpdateSendingServerData
-  ) {
+  async updateSendingServer(serverId: string, tenantId: string, data: UpdateSendingServerData) {
     const existingServer = await prisma.sendingServer.findFirst({
       where: {
         id: serverId,
@@ -140,7 +136,7 @@ export class SendingServerService {
 
   async testSendingServer(serverId: string, tenantId: string) {
     const isValid = await this.emailSendingService.testServerConnection(serverId, tenantId);
-    
+
     return {
       success: isValid,
       message: isValid ? 'Connection successful' : 'Connection failed',
@@ -174,17 +170,17 @@ export class SendingServerService {
 
   async getSendingServerStats(tenantId: string) {
     const servers = await this.getSendingServers(tenantId);
-    
+
     // Get stats from audit logs for each server
     const stats = await Promise.all(
-      servers.map(async (server) => {
+      servers.map(async server => {
         const totalSent = await prisma.auditLog.count({
           where: {
             tenantId,
             action: 'EMAIL_SEND',
             resourceId: server.id,
             metadata: {
-              path: ['success'],
+              path: 'success',
               equals: true,
             },
           },
@@ -196,7 +192,7 @@ export class SendingServerService {
             action: 'EMAIL_SEND',
             resourceId: server.id,
             metadata: {
-              path: ['success'],
+              path: 'success',
               equals: false,
             },
           },
@@ -223,7 +219,8 @@ export class SendingServerService {
           isActive: server.isActive,
           totalSent,
           totalFailed,
-          successRate: totalSent + totalFailed > 0 ? (totalSent / (totalSent + totalFailed)) * 100 : 0,
+          successRate:
+            totalSent + totalFailed > 0 ? (totalSent / (totalSent + totalFailed)) * 100 : 0,
           lastUsed: lastUsed?.createdAt,
         };
       })
@@ -241,7 +238,13 @@ export class SendingServerService {
         configFields: [
           { name: 'accessKeyId', label: 'Access Key ID', type: 'text', required: true },
           { name: 'secretAccessKey', label: 'Secret Access Key', type: 'password', required: true },
-          { name: 'region', label: 'AWS Region', type: 'text', required: true, default: 'us-east-1' },
+          {
+            name: 'region',
+            label: 'AWS Region',
+            type: 'text',
+            required: true,
+            default: 'us-east-1',
+          },
           { name: 'configurationSet', label: 'Configuration Set', type: 'text', required: false },
         ],
       },
@@ -261,7 +264,13 @@ export class SendingServerService {
         configFields: [
           { name: 'apiKey', label: 'API Key', type: 'password', required: true },
           { name: 'domain', label: 'Domain', type: 'text', required: true },
-          { name: 'baseUrl', label: 'Base URL', type: 'text', required: false, default: 'https://api.mailgun.net' },
+          {
+            name: 'baseUrl',
+            label: 'Base URL',
+            type: 'text',
+            required: false,
+            default: 'https://api.mailgun.net',
+          },
         ],
       },
       {
@@ -270,7 +279,13 @@ export class SendingServerService {
         description: 'SparkPost Email API',
         configFields: [
           { name: 'apiKey', label: 'API Key', type: 'password', required: true },
-          { name: 'baseUrl', label: 'Base URL', type: 'text', required: false, default: 'https://api.sparkpost.com' },
+          {
+            name: 'baseUrl',
+            label: 'Base URL',
+            type: 'text',
+            required: false,
+            default: 'https://api.sparkpost.com',
+          },
           { name: 'ipPool', label: 'IP Pool', type: 'text', required: false },
         ],
       },
@@ -280,7 +295,13 @@ export class SendingServerService {
         description: 'ElasticEmail API',
         configFields: [
           { name: 'apiKey', label: 'API Key', type: 'password', required: true },
-          { name: 'baseUrl', label: 'Base URL', type: 'text', required: false, default: 'https://api.elasticemail.com' },
+          {
+            name: 'baseUrl',
+            label: 'Base URL',
+            type: 'text',
+            required: false,
+            default: 'https://api.elasticemail.com',
+          },
         ],
       },
       {
@@ -293,9 +314,27 @@ export class SendingServerService {
           { name: 'secure', label: 'Use SSL/TLS', type: 'boolean', required: true, default: false },
           { name: 'username', label: 'Username', type: 'text', required: true },
           { name: 'password', label: 'Password', type: 'password', required: true },
-          { name: 'pool', label: 'Use Connection Pool', type: 'boolean', required: false, default: true },
-          { name: 'maxConnections', label: 'Max Connections', type: 'number', required: false, default: 5 },
-          { name: 'maxMessages', label: 'Max Messages per Connection', type: 'number', required: false, default: 100 },
+          {
+            name: 'pool',
+            label: 'Use Connection Pool',
+            type: 'boolean',
+            required: false,
+            default: true,
+          },
+          {
+            name: 'maxConnections',
+            label: 'Max Connections',
+            type: 'number',
+            required: false,
+            default: 5,
+          },
+          {
+            name: 'maxMessages',
+            label: 'Max Messages per Connection',
+            type: 'number',
+            required: false,
+            default: 100,
+          },
         ],
       },
       {
