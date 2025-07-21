@@ -350,9 +350,9 @@ export class BounceComplaintService {
           resourceId: tenantId,
           metadata: {
             alerts,
-            metrics,
+            metrics: JSON.parse(JSON.stringify(metrics)),
             timestamp: new Date(),
-          },
+          } as any,
         },
       });
 

@@ -15,7 +15,6 @@ export interface DKIMKeys {
   selector: string;
   privateKey: string;
   publicKey: string;
-  dnsRecord: string;
 }
 
 export interface DNSRecords {
@@ -184,8 +183,9 @@ export class DomainService {
     const verificationResults = await this.verifyDNSRecords(domain.name, dnsRecords);
 
     // Update domain verification status
-    const isVerified = verificationResults.dkim.status === 'verified' && 
-                      verificationResults.spf.status === 'verified';
+    const isVerified =
+      verificationResults.dkim.status === 'verified' &&
+      verificationResults.spf.status === 'verified';
 
     await prisma.domain.update({
       where: {
@@ -238,7 +238,7 @@ export class DomainService {
 
   private generateDKIMKeys(): DKIMKeys {
     const { generateKeyPairSync } = crypto;
-    
+
     const { publicKey, privateKey } = generateKeyPairSync('rsa', {
       modulusLength: 2048,
       publicKeyEncoding: {
@@ -254,28 +254,28 @@ export class DomainService {
     // Generate a random selector
     const selector = `dkim${Date.now()}`;
 
-    // Format public key for DNS record
-    const publicKeyFormatted = publicKey
-      .replace(/-----BEGIN PUBLIC KEY-----/, '')
-      .replace(/-----END PUBLIC KEY-----/, '')
-      .replace(/\n/g, '');
-
-    const dnsRecord = `v=DKIM1; k=rsa; p=${publicKeyFormatted}`;
-
     return {
       selector,
       privateKey,
       publicKey,
-      dnsRecord,
     };
   }
 
-  private getDNSRecords(domainName: string, dkimKeys: DKIMKeys): DNSRecords {
+  private getDNSRecords(
+    domainName: string,
+    dkimKeys: { selector: string; privateKey: string; publicKey: string }
+  ): DNSRecords {
+    // Generate DNS record from public key
+    const dnsRecord = `v=DKIM1; k=rsa; p=${dkimKeys.publicKey.replace(
+      /-----BEGIN PUBLIC KEY-----|\-----END PUBLIC KEY-----|\n/g,
+      ''
+    )}`;
+
     return {
       dkim: {
         name: `${dkimKeys.selector}._domainkey.${domainName}`,
         type: 'TXT',
-        value: dkimKeys.dnsRecord,
+        value: dnsRecord,
         status: 'pending',
       },
       spf: {
@@ -301,8 +301,11 @@ export class DomainService {
       try {
         const dkimRecords = await resolveTxt(dnsRecords.dkim.name);
         const dkimRecord = dkimRecords.flat().find(record => record.includes('v=DKIM1'));
-        
-        if (dkimRecord && dkimRecord.includes(dnsRecords.dkim.value.split('p=')[1]?.split(';')[0] || '')) {
+
+        if (
+          dkimRecord &&
+          dkimRecord.includes(dnsRecords.dkim.value.split('p=')[1]?.split(';')[0] || '')
+        ) {
           results.dkim.status = 'verified';
         } else {
           results.dkim.status = 'failed';
@@ -315,7 +318,7 @@ export class DomainService {
       try {
         const spfRecords = await resolveTxt(domainName);
         const spfRecord = spfRecords.flat().find(record => record.includes('v=spf1'));
-        
+
         if (spfRecord) {
           results.spf.status = 'verified';
         } else {
@@ -326,11 +329,11 @@ export class DomainService {
       }
 
       // Verify DMARC record
-      if (results.dmarc) {
+      if (results.dmarc && dnsRecords.dmarc) {
         try {
           const dmarcRecords = await resolveTxt(dnsRecords.dmarc.name);
           const dmarcRecord = dmarcRecords.flat().find(record => record.includes('v=DMARC1'));
-          
+
           if (dmarcRecord) {
             results.dmarc.status = 'verified';
           } else {
@@ -342,10 +345,10 @@ export class DomainService {
       }
 
       // Verify CNAME record (if applicable)
-      if (results.cname) {
+      if (results.cname && dnsRecords.cname) {
         try {
           const cnameRecords = await resolveCname(dnsRecords.cname.name);
-          
+
           if (cnameRecords.includes(dnsRecords.cname.value)) {
             results.cname.status = 'verified';
           } else {
@@ -364,16 +367,16 @@ export class DomainService {
 
   async getDomainStats(tenantId: string) {
     const domains = await this.getDomains(tenantId);
-    
+
     const stats = await Promise.all(
-      domains.map(async (domain) => {
+      domains.map(async domain => {
         // Get email sending stats for this domain
         const totalSent = await prisma.auditLog.count({
           where: {
             tenantId,
             action: 'EMAIL_SEND',
             metadata: {
-              path: ['success'],
+              path: 'success',
               equals: true,
             },
           },
@@ -384,7 +387,7 @@ export class DomainService {
             tenantId,
             action: 'EMAIL_SEND',
             metadata: {
-              path: ['success'],
+              path: 'success',
               equals: false,
             },
           },
@@ -396,7 +399,8 @@ export class DomainService {
           isVerified: domain.isVerified,
           totalSent,
           totalFailed,
-          successRate: totalSent + totalFailed > 0 ? (totalSent / (totalSent + totalFailed)) * 100 : 0,
+          successRate:
+            totalSent + totalFailed > 0 ? (totalSent / (totalSent + totalFailed)) * 100 : 0,
           createdAt: domain.createdAt,
         };
       })

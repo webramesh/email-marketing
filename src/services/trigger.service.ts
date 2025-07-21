@@ -26,7 +26,7 @@ export class TriggerService {
 
       // Start execution for each matching automation
       for (const automation of matchingAutomations) {
-        await this.startAutomationExecution(automation, event);
+        await this.startAutomationExecution(automation as unknown as Automation, event);
       }
     } catch (error) {
       console.error('Error processing trigger event:', error);
@@ -163,7 +163,7 @@ export class TriggerService {
       timestamp: new Date(),
     };
 
-    await this.startAutomationExecution(automation, event);
+    await this.startAutomationExecution(automation as unknown as Automation, event);
   }
 
   /**
@@ -182,7 +182,7 @@ export class TriggerService {
 
     for (const automation of automations) {
       try {
-        await this.processDateBasedAutomation(automation, now);
+        await this.processDateBasedAutomation(automation as unknown as Automation, now);
       } catch (error) {
         console.error(`Error processing date-based automation ${automation.id}:`, error);
       }
@@ -483,7 +483,7 @@ export class TriggerService {
           timestamp: currentTime,
         };
 
-        await this.startAutomationExecution(automation, event);
+        await this.startAutomationExecution(automation as unknown as Automation, event);
       }
     }
   }

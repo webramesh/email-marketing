@@ -593,7 +593,7 @@ export class WorkflowExecutionService {
 
         timeline.push({
           nodeId: step.id,
-          nodeName: step.stepConfig?.label || step.stepType,
+          nodeName: (step.stepConfig && typeof step.stepConfig === 'object' && 'label' in step.stepConfig ? step.stepConfig.label as string : null) || step.stepType,
           nodeType: step.stepType,
           executedAt: execution.startedAt,
           status,

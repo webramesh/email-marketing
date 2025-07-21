@@ -4,12 +4,12 @@ import { EmailMessage, SendingResult, SMTPConfig, SendingServerType } from '@/ty
 
 export class SMTPProvider extends BaseSendingProvider {
   type = SendingServerType.SMTP;
-  
+
   async send(message: EmailMessage, config: SMTPConfig): Promise<SendingResult> {
     try {
       this.validateEmailMessage(message);
-      
-      const transporter = nodemailer.createTransporter({
+
+      const transporter = nodemailer.createTransport({
         host: config.host,
         port: config.port,
         secure: config.secure,
@@ -20,10 +20,10 @@ export class SMTPProvider extends BaseSendingProvider {
         pool: config.pool,
         maxConnections: config.maxConnections,
         maxMessages: config.maxMessages,
-      });
+      } as any);
 
       const recipients = Array.isArray(message.to) ? message.to : [message.to];
-      
+
       const mailOptions = {
         from: message.fromName ? `${message.fromName} <${message.from}>` : message.from,
         to: recipients,
@@ -41,7 +41,7 @@ export class SMTPProvider extends BaseSendingProvider {
       };
 
       const result = await transporter.sendMail(mailOptions);
-      
+
       return this.createResult(true, result.messageId);
     } catch (error: any) {
       console.error('SMTP sending error:', error);
@@ -51,7 +51,7 @@ export class SMTPProvider extends BaseSendingProvider {
 
   async validateConfig(config: SMTPConfig): Promise<boolean> {
     try {
-      const transporter = nodemailer.createTransporter({
+      const transporter = nodemailer.createTransport({
         host: config.host,
         port: config.port,
         secure: config.secure,
