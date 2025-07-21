@@ -48,7 +48,7 @@ export function ReputationMonitor() {
       case 'medium':
         return 'warning';
       case 'high':
-        return 'destructive';
+        return 'error';
       default:
         return 'secondary';
     }

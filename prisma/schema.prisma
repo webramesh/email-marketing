@@ -44,6 +44,7 @@ model Tenant {
   webhooks          Webhook[]
   payments          Payment[]
   auditLogs         AuditLog[]
+  scheduledReports  ScheduledReport[]
 
   @@map("tenants")
 }
@@ -664,4 +665,25 @@ model AuditLog {
   @@index([userId])
   @@index([createdAt])
   @@map("audit_logs")
+}
+
+// Scheduled Reports
+model ScheduledReport {
+  id                String      @id @default(cuid())
+  name              String
+  description       String?
+  reportConfig      Json
+  schedule          Json
+  isActive          Boolean     @default(true)
+  lastRunAt         DateTime?
+  nextRunAt         DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+
+  @@index([tenantId])
+  @@index([isActive])
+  @@index([nextRunAt])
+  @@map("scheduled_reports")
 }

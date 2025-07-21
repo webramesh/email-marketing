@@ -339,7 +339,7 @@ export default function DomainsPage() {
                   <h4 className="font-medium">DKIM Record</h4>
                   <Badge variant={
                     selectedDomain.dnsRecords.dkim.status === 'verified' ? 'success' :
-                    selectedDomain.dnsRecords.dkim.status === 'failed' ? 'destructive' : 'warning'
+                    selectedDomain.dnsRecords.dkim.status === 'failed' ? 'error' : 'warning'
                   }>
                     {selectedDomain.dnsRecords.dkim.status}
                   </Badge>
@@ -387,7 +387,7 @@ export default function DomainsPage() {
                   <h4 className="font-medium">SPF Record</h4>
                   <Badge variant={
                     selectedDomain.dnsRecords.spf.status === 'verified' ? 'success' :
-                    selectedDomain.dnsRecords.spf.status === 'failed' ? 'destructive' : 'warning'
+                    selectedDomain.dnsRecords.spf.status === 'failed' ? 'error' : 'warning'
                   }>
                     {selectedDomain.dnsRecords.spf.status}
                   </Badge>
@@ -436,7 +436,7 @@ export default function DomainsPage() {
                     <h4 className="font-medium">DMARC Record (Optional)</h4>
                     <Badge variant={
                       selectedDomain.dnsRecords.dmarc.status === 'verified' ? 'success' :
-                      selectedDomain.dnsRecords.dmarc.status === 'failed' ? 'destructive' : 'warning'
+                      selectedDomain.dnsRecords.dmarc.status === 'failed' ? 'error' : 'warning'
                     }>
                       {selectedDomain.dnsRecords.dmarc.status}
                     </Badge>
@@ -451,7 +451,7 @@ export default function DomainsPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => copyToClipboard(selectedDomain.dnsRecords.dmarc.name)}
+                          onClick={() => copyToClipboard(selectedDomain.dnsRecords.dmarc?.name || '')}
                         >
                           Copy
                         </Button>
@@ -469,7 +469,7 @@ export default function DomainsPage() {
                         <Button
                           variant="outline"
                           size="sm"
-                          onClick={() => copyToClipboard(selectedDomain.dnsRecords.dmarc.value)}
+                          onClick={() => copyToClipboard(selectedDomain.dnsRecords.dmarc?.value || '')}
                         >
                           Copy
                         </Button>

@@ -1,10 +1,10 @@
 import { prisma } from '@/lib/prisma';
+import { AutomationStatus } from '@/generated/prisma';
 import {
   Automation,
   AutomationWithDetails,
   CreateAutomationRequest,
   UpdateAutomationRequest,
-  AutomationStatus,
   WorkflowNode,
   WorkflowConnection,
   TriggerType,
@@ -74,7 +74,7 @@ export class AutomationService {
     ]);
 
     return {
-      data: automations,
+      data: automations as any,
       meta: {
         total,
         page,
@@ -114,7 +114,7 @@ export class AutomationService {
           },
         },
       },
-    });
+    }) as Promise<AutomationWithDetails | null>;
   }
 
   /**
@@ -130,19 +130,21 @@ export class AutomationService {
     // Convert workflow nodes to workflow steps
     const workflowSteps = this.convertNodesToSteps(data.workflowData.nodes);
 
-    return prisma.automation.create({
+    const automation = await prisma.automation.create({
       data: {
         name: data.name,
         status: AutomationStatus.DRAFT,
         triggerType: data.triggerType,
-        triggerConfig: data.triggerConfig,
-        workflowData: data.workflowData,
+        triggerConfig: data.triggerConfig as any,
+        workflowData: data.workflowData as any,
         tenantId,
         workflowSteps: {
           create: workflowSteps,
         },
       },
-    });
+    }) as unknown as Automation;
+
+    return automation as unknown as Automation;
   }
 
   /**
@@ -175,17 +177,19 @@ export class AutomationService {
       };
     }
 
-    return prisma.automation.update({
+    const updatedAutomation = await prisma.automation.update({
       where: { id },
       data: {
         ...(data.name && { name: data.name }),
         ...(data.status && { status: data.status }),
         ...(data.triggerType && { triggerType: data.triggerType }),
-        ...(data.triggerConfig && { triggerConfig: data.triggerConfig }),
-        ...(data.workflowData && { workflowData: data.workflowData }),
+        ...(data.triggerConfig && { triggerConfig: data.triggerConfig as any }),
+        ...(data.workflowData && { workflowData: data.workflowData as any }),
         ...workflowStepsUpdate,
       },
     });
+
+    return updatedAutomation as unknown as Automation;
   }
 
   /**

@@ -47,7 +47,7 @@ export function QueueMonitor() {
   };
 
   const getStatusColor = (queueName: string, stats: QueueStats) => {
-    if (stats.failed > 10) return 'destructive';
+    if (stats.failed > 10) return 'error';
     if (stats.active > 0) return 'warning';
     if (stats.waiting > 0) return 'secondary';
     return 'success';

@@ -14,27 +14,27 @@ interface EmailValidationIndicatorProps {
 const statusConfig = {
   [VerificationStatus.VALID]: {
     label: 'Valid',
-    color: 'green' as const,
+    color: 'success' as const,
     icon: '✓',
   },
   [VerificationStatus.INVALID]: {
     label: 'Invalid',
-    color: 'red' as const,
+    color: 'error' as const,
     icon: '✗',
   },
   [VerificationStatus.RISKY]: {
     label: 'Risky',
-    color: 'yellow' as const,
+    color: 'warning' as const,
     icon: '⚠',
   },
   [VerificationStatus.UNKNOWN]: {
     label: 'Unknown',
-    color: 'gray' as const,
+    color: 'secondary' as const,
     icon: '?',
   },
   [VerificationStatus.PENDING]: {
     label: 'Pending',
-    color: 'blue' as const,
+    color: 'primary' as const,
     icon: '⏳',
   },
 };
@@ -68,7 +68,7 @@ export function EmailValidationIndicator({
           {result.reason && (
             <div className="mt-1">{result.reason}</div>
           )}
-          
+
           {result.details && (
             <div className="mt-1 flex flex-wrap gap-1">
               {result.details.syntax && (
@@ -143,7 +143,7 @@ export function EmailValidationInput({
             ${isValidating ? 'pr-8' : ''}
           `}
         />
-        
+
         {isValidating && (
           <div className="absolute right-2 top-1/2 transform -translate-y-1/2">
             <div className="animate-spin h-4 w-4 border-2 border-blue-500 border-t-transparent rounded-full"></div>

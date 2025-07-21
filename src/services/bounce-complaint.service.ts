@@ -1,5 +1,5 @@
 import { prisma } from '@/lib/prisma';
-import { BounceComplaintType } from '@prisma/client';
+import { BounceComplaintType } from '@/generated/prisma';
 
 export interface BounceData {
   email: string;
@@ -181,7 +181,7 @@ export class BounceComplaintService {
         action: 'EMAIL_SEND',
         createdAt: { gte: since },
         metadata: {
-          path: ['success'],
+          path: 'success',
           equals: true,
         },
       },
