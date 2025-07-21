@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/lib/auth';
 import { PrismaClient } from '@/generated/prisma';
 import { EmailVerificationService } from '@/services/email-verification.service';
 
@@ -13,7 +12,7 @@ const emailVerificationService = new EmailVerificationService(prisma);
  */
 export async function GET(_request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
 
     if (!session?.user?.tenantId) {
       return NextResponse.json({ success: false, error: 'Unauthorized' }, { status: 401 });

@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/lib/auth';
 import { PrismaClient } from '@/generated/prisma';
 import { EmailVerificationService } from '@/services/email-verification.service';
 import { z } from 'zod';
@@ -19,7 +18,7 @@ const validateEmailSchema = z.object({
  */
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     
     if (!session?.user?.tenantId) {
       return NextResponse.json(
@@ -72,7 +71,7 @@ export async function POST(request: NextRequest) {
  */
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     
     if (!session?.user?.tenantId) {
       return NextResponse.json(

@@ -13,7 +13,7 @@ const sendingServerService = new SendingServerService();
 
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
@@ -21,6 +21,7 @@ export async function GET(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const params = await context.params;
     const server = await sendingServerService.getSendingServer(
       params.id,
       session.user.tenantId
@@ -38,7 +39,7 @@ export async function GET(
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
@@ -46,6 +47,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const params = await context.params;
     const body = await request.json();
     const validatedData = updateSendingServerSchema.parse(body);
 
@@ -75,7 +77,7 @@ export async function PUT(
 
 export async function DELETE(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
@@ -83,6 +85,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const params = await context.params;
     await sendingServerService.deleteSendingServer(
       params.id,
       session.user.tenantId

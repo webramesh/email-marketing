@@ -1,8 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
-import { SendingServerService } from '@/services/sending-server.service';
-
-const sendingServerService = new SendingServerService();
+import { automationService } from '@/services/automation.service';
 
 export async function POST(
   request: NextRequest,
@@ -15,16 +13,16 @@ export async function POST(
     }
 
     const params = await context.params;
-    const result = await sendingServerService.testSendingServer(
+    const automation = await automationService.duplicateAutomation(
       params.id,
       session.user.tenantId
     );
 
-    return NextResponse.json(result);
+    return NextResponse.json(automation, { status: 201 });
   } catch (error) {
-    console.error('Error testing sending server:', error);
+    console.error('Error duplicating automation:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to test sending server' },
+      { error: 'Failed to duplicate automation' },
       { status: 500 }
     );
   }

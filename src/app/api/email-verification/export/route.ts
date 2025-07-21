@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/lib/auth';
+import { auth } from '@/lib/auth';
 import { PrismaClient } from '@/generated/prisma';
 import { EmailVerificationService } from '@/services/email-verification.service';
 import { VerificationStatus } from '@/types';
@@ -20,7 +19,7 @@ const exportSchema = z.object({
  */
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await auth();
     
     if (!session?.user?.tenantId) {
       return NextResponse.json(
@@ -40,7 +39,7 @@ export async function GET(request: NextRequest) {
         { 
           success: false, 
           error: 'Invalid query parameters',
-          details: validation.error.errors 
+          details: validation.error.issues 
         },
         { status: 400 }
       );

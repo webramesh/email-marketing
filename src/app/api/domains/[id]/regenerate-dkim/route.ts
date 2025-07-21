@@ -6,7 +6,7 @@ const domainService = new DomainService();
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
     const session = await auth();
@@ -14,6 +14,7 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const params = await context.params;
     const result = await domainService.regenerateDKIMKeys(
       params.id,
       session.user.tenantId

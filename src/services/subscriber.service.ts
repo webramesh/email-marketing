@@ -1,4 +1,5 @@
 import { createTenantPrisma } from '@/lib/tenant/prisma-wrapper'
+import { triggerService } from './trigger.service'
 import { SubscriberStatus, type Subscriber, type PaginatedResponse } from '@/types'
 import { Prisma } from '@/generated/prisma'
 
@@ -245,6 +246,18 @@ export class SubscriberService {
       }
     })
 
+    // Trigger subscription automation
+    try {
+      await triggerService.handleSubscriptionTrigger(
+        this.tenantId,
+        subscriber.id,
+        'general' // Default list for new subscribers
+      )
+    } catch (error) {
+      console.error('Error triggering subscription automation:', error)
+      // Don't fail subscriber creation if trigger fails
+    }
+
     return subscriber as SubscriberWithDetails
   }
 
@@ -268,6 +281,25 @@ export class SubscriberService {
       }
     }
 
+    // Track custom field changes for triggers
+    const customFieldChanges: Array<{
+      fieldName: string;
+      oldValue: any;
+      newValue: any;
+    }> = [];
+
+    if (data.customFields && existingSubscriber.customFields) {
+      const oldFields = existingSubscriber.customFields as Record<string, any>;
+      const newFields = data.customFields;
+
+      for (const [fieldName, newValue] of Object.entries(newFields)) {
+        const oldValue = oldFields[fieldName];
+        if (oldValue !== newValue) {
+          customFieldChanges.push({ fieldName, oldValue, newValue });
+        }
+      }
+    }
+
     const subscriber = await tenantPrisma.prisma.subscriber.update({
       where: { id },
       data,
@@ -286,6 +318,22 @@ export class SubscriberService {
         }
       }
     })
+
+    // Trigger custom field change automations
+    try {
+      for (const change of customFieldChanges) {
+        await triggerService.handleCustomFieldChangedTrigger(
+          this.tenantId,
+          id,
+          change.fieldName,
+          change.oldValue,
+          change.newValue
+        );
+      }
+    } catch (error) {
+      console.error('Error triggering custom field change automation:', error);
+      // Don't fail subscriber update if trigger fails
+    }
 
     return subscriber as SubscriberWithDetails
   }
@@ -371,6 +419,18 @@ export class SubscriberService {
         subscriberId
       }
     })
+
+    // Trigger list joined automation
+    try {
+      await triggerService.handleListJoinedTrigger(
+        this.tenantId,
+        subscriberId,
+        listId
+      );
+    } catch (error) {
+      console.error('Error triggering list joined automation:', error);
+      // Don't fail list addition if trigger fails
+    }
   }
 
   /**

@@ -390,6 +390,197 @@ export interface BulkVerificationRequest {
   removeRisky?: boolean;
 }
 
+// Automation and Workflow types
+export enum AutomationStatus {
+  DRAFT = 'DRAFT',
+  ACTIVE = 'ACTIVE',
+  PAUSED = 'PAUSED',
+  COMPLETED = 'COMPLETED',
+}
+
+export enum ExecutionStatus {
+  PENDING = 'PENDING',
+  RUNNING = 'RUNNING',
+  COMPLETED = 'COMPLETED',
+  FAILED = 'FAILED',
+  PAUSED = 'PAUSED',
+}
+
+export enum WorkflowNodeType {
+  TRIGGER = 'TRIGGER',
+  ACTION = 'ACTION',
+  CONDITION = 'CONDITION',
+  DELAY = 'DELAY',
+  EMAIL = 'EMAIL',
+  WAIT = 'WAIT',
+  SPLIT = 'SPLIT',
+  MERGE = 'MERGE',
+}
+
+export enum TriggerType {
+  SUBSCRIPTION = 'SUBSCRIPTION',
+  DATE_BASED = 'DATE_BASED',
+  BEHAVIOR_BASED = 'BEHAVIOR_BASED',
+  API_TRIGGERED = 'API_TRIGGERED',
+  EVENT_DRIVEN = 'EVENT_DRIVEN',
+  EMAIL_OPENED = 'EMAIL_OPENED',
+  EMAIL_CLICKED = 'EMAIL_CLICKED',
+  LIST_JOINED = 'LIST_JOINED',
+  CUSTOM_FIELD_CHANGED = 'CUSTOM_FIELD_CHANGED',
+}
+
+export interface WorkflowNode {
+  id: string;
+  type: WorkflowNodeType;
+  position: { x: number; y: number };
+  data: {
+    label: string;
+    description?: string;
+    config: Record<string, any>;
+    isValid?: boolean;
+    errors?: string[];
+  };
+  connections: {
+    inputs: string[];
+    outputs: string[];
+  };
+}
+
+export interface WorkflowConnection {
+  id: string;
+  sourceNodeId: string;
+  targetNodeId: string;
+  sourceHandle?: string;
+  targetHandle?: string;
+  condition?: {
+    type: 'always' | 'conditional';
+    expression?: string;
+    value?: any;
+  };
+}
+
+export interface WorkflowTemplate {
+  id: string;
+  name: string;
+  description: string;
+  category: string;
+  nodes: WorkflowNode[];
+  connections: WorkflowConnection[];
+  thumbnail?: string;
+  isPublic: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface Automation {
+  id: string;
+  name: string;
+  status: AutomationStatus;
+  triggerType: string;
+  triggerConfig: Record<string, any>;
+  workflowData: {
+    nodes: WorkflowNode[];
+    connections: WorkflowConnection[];
+  };
+  tenantId: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface AutomationWithDetails extends Automation {
+  workflowSteps: WorkflowStep[];
+  executions: AutomationExecution[];
+  _count?: {
+    executions: number;
+  };
+}
+
+export interface WorkflowStep {
+  id: string;
+  automationId: string;
+  stepType: string;
+  stepConfig: Record<string, any>;
+  position: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface AutomationExecution {
+  id: string;
+  automationId: string;
+  subscriberId: string;
+  status: ExecutionStatus;
+  currentStep: number;
+  executionData?: Record<string, any> | null;
+  startedAt: Date;
+  completedAt?: Date | null;
+  tenantId: string;
+}
+
+export interface AutomationExecutionWithDetails extends AutomationExecution {
+  automation: {
+    id: string;
+    name: string;
+  };
+  subscriber: {
+    id: string;
+    email: string;
+    firstName?: string | null;
+    lastName?: string | null;
+  };
+}
+
+export interface CreateAutomationRequest {
+  name: string;
+  triggerType: string;
+  triggerConfig: Record<string, any>;
+  workflowData: {
+    nodes: WorkflowNode[];
+    connections: WorkflowConnection[];
+  };
+}
+
+export interface UpdateAutomationRequest extends Partial<CreateAutomationRequest> {
+  status?: AutomationStatus;
+}
+
+export interface TriggerConfiguration {
+  type: TriggerType;
+  name: string;
+  description: string;
+  icon: string;
+  config: {
+    fields: Array<{
+      key: string;
+      label: string;
+      type: 'text' | 'number' | 'date' | 'select' | 'boolean' | 'list' | 'segment';
+      required: boolean;
+      options?: Array<{ value: any; label: string }>;
+      placeholder?: string;
+      description?: string;
+    }>;
+  };
+}
+
+export interface ActionConfiguration {
+  type: string;
+  name: string;
+  description: string;
+  icon: string;
+  category: 'email' | 'subscriber' | 'list' | 'webhook' | 'delay' | 'condition';
+  config: {
+    fields: Array<{
+      key: string;
+      label: string;
+      type: 'text' | 'number' | 'date' | 'select' | 'boolean' | 'email' | 'template' | 'list' | 'segment';
+      required: boolean;
+      options?: Array<{ value: any; label: string }>;
+      placeholder?: string;
+      description?: string;
+    }>;
+  };
+}
+
 // Tenant context
 export interface TenantContext {
   tenant: Tenant | null;
