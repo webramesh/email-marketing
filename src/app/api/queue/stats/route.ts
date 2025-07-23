@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@/lib/auth';
 import { EmailQueueService } from '@/services/email-queue.service';
 
-const emailQueueService = new EmailQueueService();
-
 export async function GET(request: NextRequest) {
   try {
     const session = await auth();
@@ -16,6 +14,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // Instantiate service only when needed (at runtime, not build time)
+    const emailQueueService = new EmailQueueService();
     const stats = await emailQueueService.getQueueStats();
     
     return NextResponse.json({ stats });

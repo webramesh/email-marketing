@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, Suspense } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { CampaignList } from '@/components/campaigns/CampaignList'
 import { CampaignForm } from '@/components/campaigns/CampaignForm'
@@ -11,7 +11,7 @@ import { CampaignWithDetails } from '@/types'
 
 type ViewMode = 'list' | 'create' | 'edit' | 'builder' | 'templates' | 'ab-test'
 
-export default function CampaignsPage() {
+function CampaignsPageContent() {
   const [currentView, setCurrentView] = useState<ViewMode>('list')
   const [selectedCampaign, setSelectedCampaign] = useState<CampaignWithDetails | null>(null)
   const router = useRouter()
@@ -130,5 +130,13 @@ export default function CampaignsPage() {
         />
       )}
     </div>
+  )
+}
+
+export default function CampaignsPage() {
+  return (
+    <Suspense fallback={<div>Loading campaigns...</div>}>
+      <CampaignsPageContent />
+    </Suspense>
   )
 }

@@ -1,6 +1,13 @@
 import Bull from 'bull';
 import Redis from 'ioredis';
 
+// Check if we're in a build environment
+const isBuildTime =
+  process.env.NODE_ENV === 'test' ||
+  typeof window !== 'undefined' ||
+  process.env.NEXT_PHASE === 'phase-production-build' ||
+  process.argv.includes('build');
+
 // Redis connection configuration
 const redisConfig = {
   host: process.env.REDIS_HOST || 'localhost',
@@ -12,64 +19,179 @@ const redisConfig = {
   lazyConnect: true,
 };
 
-// Create Redis connection
-export const redis = new Redis(redisConfig);
+// Lazy Redis connection - only create when needed and not during build
+let _redis: Redis | null = null;
+export const getRedis = () => {
+  if (isBuildTime) {
+    throw new Error('Redis not available during build time');
+  }
+  if (!_redis) {
+    _redis = new Redis(redisConfig);
+  }
+  return _redis;
+};
 
-// Email queue for processing email sending jobs
-export const emailQueue = new Bull('email processing', {
-  redis: redisConfig,
-  defaultJobOptions: {
-    removeOnComplete: 100, // Keep last 100 completed jobs
-    removeOnFail: 50, // Keep last 50 failed jobs
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 2000,
-    },
-  },
-});
+// For backward compatibility - return mock during build time
+export const redis = isBuildTime
+  ? ({} as Redis)
+  : new Proxy({} as Redis, {
+      get(target, prop) {
+        return getRedis()[prop as keyof Redis];
+      },
+    });
 
-// Campaign queue for processing campaign sending
-export const campaignQueue = new Bull('campaign processing', {
-  redis: redisConfig,
-  defaultJobOptions: {
-    removeOnComplete: 50,
-    removeOnFail: 25,
-    attempts: 2,
-    backoff: {
-      type: 'exponential',
-      delay: 5000,
-    },
-  },
-});
+// Lazy queue initialization - only create when needed and not during build
+let _emailQueue: Bull.Queue | null = null;
+let _campaignQueue: Bull.Queue | null = null;
+let _automationQueue: Bull.Queue | null = null;
+let _analyticsQueue: Bull.Queue | null = null;
 
-// Automation queue for processing workflow executions
-export const automationQueue = new Bull('automation processing', {
-  redis: redisConfig,
-  defaultJobOptions: {
-    removeOnComplete: 100,
-    removeOnFail: 50,
-    attempts: 3,
-    backoff: {
-      type: 'exponential',
-      delay: 1000,
-    },
-  },
-});
+const createQueueIfNeeded = () => {
+  if (isBuildTime) {
+    throw new Error('Queues not available during build time');
+  }
+};
 
-// Analytics queue for processing tracking events
-export const analyticsQueue = new Bull('analytics processing', {
-  redis: redisConfig,
-  defaultJobOptions: {
-    removeOnComplete: 200,
-    removeOnFail: 100,
-    attempts: 5,
-    backoff: {
-      type: 'exponential',
-      delay: 500,
-    },
-  },
-});
+export const getEmailQueue = () => {
+  createQueueIfNeeded();
+  if (!_emailQueue) {
+    _emailQueue = new Bull('email processing', {
+      redis: redisConfig,
+      defaultJobOptions: {
+        removeOnComplete: 100,
+        removeOnFail: 50,
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 2000,
+        },
+      },
+    });
+
+    _emailQueue.on('error', error => {
+      console.error('Email queue error:', error);
+    });
+
+    _emailQueue.on('completed', job => {
+      console.log(`Email job ${job.id} completed`);
+    });
+
+    _emailQueue.on('failed', (job, err) => {
+      console.error(`Email job ${job.id} failed:`, err);
+    });
+  }
+  return _emailQueue;
+};
+
+export const getCampaignQueue = () => {
+  createQueueIfNeeded();
+  if (!_campaignQueue) {
+    _campaignQueue = new Bull('campaign processing', {
+      redis: redisConfig,
+      defaultJobOptions: {
+        removeOnComplete: 50,
+        removeOnFail: 25,
+        attempts: 2,
+        backoff: {
+          type: 'exponential',
+          delay: 5000,
+        },
+      },
+    });
+
+    _campaignQueue.on('error', error => {
+      console.error('Campaign queue error:', error);
+    });
+
+    _campaignQueue.on('completed', job => {
+      console.log(`Campaign job ${job.id} completed`);
+    });
+
+    _campaignQueue.on('failed', (job, err) => {
+      console.error(`Campaign job ${job.id} failed:`, err);
+    });
+  }
+  return _campaignQueue;
+};
+
+export const getAutomationQueue = () => {
+  createQueueIfNeeded();
+  if (!_automationQueue) {
+    _automationQueue = new Bull('automation processing', {
+      redis: redisConfig,
+      defaultJobOptions: {
+        removeOnComplete: 100,
+        removeOnFail: 50,
+        attempts: 3,
+        backoff: {
+          type: 'exponential',
+          delay: 1000,
+        },
+      },
+    });
+
+    _automationQueue.on('error', error => {
+      console.error('Automation queue error:', error);
+    });
+  }
+  return _automationQueue;
+};
+
+export const getAnalyticsQueue = () => {
+  createQueueIfNeeded();
+  if (!_analyticsQueue) {
+    _analyticsQueue = new Bull('analytics processing', {
+      redis: redisConfig,
+      defaultJobOptions: {
+        removeOnComplete: 200,
+        removeOnFail: 100,
+        attempts: 5,
+        backoff: {
+          type: 'exponential',
+          delay: 500,
+        },
+      },
+    });
+
+    _analyticsQueue.on('error', error => {
+      console.error('Analytics queue error:', error);
+    });
+  }
+  return _analyticsQueue;
+};
+
+// Backward compatibility exports - return mocks during build time
+export const emailQueue = isBuildTime
+  ? ({} as Bull.Queue)
+  : new Proxy({} as Bull.Queue, {
+      get(target, prop) {
+        return getEmailQueue()[prop as keyof Bull.Queue];
+      },
+    });
+
+export const campaignQueue = isBuildTime
+  ? ({} as Bull.Queue)
+  : new Proxy({} as Bull.Queue, {
+      get(target, prop) {
+        return getCampaignQueue()[prop as keyof Bull.Queue];
+      },
+    });
+
+export const automationQueue = isBuildTime
+  ? ({} as Bull.Queue)
+  : new Proxy({} as Bull.Queue, {
+      get(target, prop) {
+        return getAutomationQueue()[prop as keyof Bull.Queue];
+      },
+    });
+
+export const analyticsQueue = isBuildTime
+  ? ({} as Bull.Queue)
+  : new Proxy({} as Bull.Queue, {
+      get(target, prop) {
+        return getAnalyticsQueue()[prop as keyof Bull.Queue];
+      },
+    });
 
 // Queue monitoring and health check
 export const getQueueStats = async () => {
@@ -115,36 +237,5 @@ export const closeQueues = async () => {
   ]);
 };
 
-// Error handling
-emailQueue.on('error', (error) => {
-  console.error('Email queue error:', error);
-});
-
-campaignQueue.on('error', (error) => {
-  console.error('Campaign queue error:', error);
-});
-
-automationQueue.on('error', (error) => {
-  console.error('Automation queue error:', error);
-});
-
-analyticsQueue.on('error', (error) => {
-  console.error('Analytics queue error:', error);
-});
-
-// Job completion logging
-emailQueue.on('completed', (job) => {
-  console.log(`Email job ${job.id} completed`);
-});
-
-emailQueue.on('failed', (job, err) => {
-  console.error(`Email job ${job.id} failed:`, err);
-});
-
-campaignQueue.on('completed', (job) => {
-  console.log(`Campaign job ${job.id} completed`);
-});
-
-campaignQueue.on('failed', (job, err) => {
-  console.error(`Campaign job ${job.id} failed:`, err);
-});
+// Note: Event listeners are now attached within the individual queue getter functions
+// to prevent initialization during build time

@@ -41,24 +41,32 @@ export interface AnalyticsJobData {
 
 export class EmailQueueService {
   private emailSendingService: EmailSendingService;
+  private processorsSetup = false;
 
   constructor() {
     this.emailSendingService = new EmailSendingService();
-    this.setupProcessors();
   }
 
   private setupProcessors() {
-    // Email processing
-    emailQueue.process('send-email', 10, this.processEmailJob.bind(this));
+    if (this.processorsSetup) return;
     
-    // Campaign processing
-    campaignQueue.process('send-campaign', 5, this.processCampaignJob.bind(this));
-    
-    // Automation processing
-    automationQueue.process('execute-automation', 20, this.processAutomationJob.bind(this));
-    
-    // Analytics processing
-    analyticsQueue.process('track-event', 50, this.processAnalyticsJob.bind(this));
+    try {
+      // Email processing
+      emailQueue.process('send-email', 10, this.processEmailJob.bind(this));
+      
+      // Campaign processing
+      campaignQueue.process('send-campaign', 5, this.processCampaignJob.bind(this));
+      
+      // Automation processing
+      automationQueue.process('execute-automation', 20, this.processAutomationJob.bind(this));
+      
+      // Analytics processing
+      analyticsQueue.process('track-event', 50, this.processAnalyticsJob.bind(this));
+      
+      this.processorsSetup = true;
+    } catch (error) {
+      console.warn('Queue processors not available:', error);
+    }
   }
 
   // Email Job Processing
@@ -67,6 +75,8 @@ export class EmailQueueService {
     priority?: number;
     attempts?: number;
   }): Promise<Job<EmailJobData>> {
+    this.setupProcessors();
+    
     const jobOptions = {
       delay: options?.delay || 0,
       priority: options?.priority || data.priority || 0,
@@ -108,6 +118,7 @@ export class EmailQueueService {
 
   // Campaign Job Processing
   async addCampaignJob(data: CampaignJobData): Promise<Job<CampaignJobData>> {
+    this.setupProcessors();
     return campaignQueue.add('send-campaign', data, {
       attempts: 2,
       backoff: { type: 'exponential', delay: 2000 },
@@ -208,6 +219,7 @@ export class EmailQueueService {
 
   // Automation Job Processing
   async addAutomationJob(data: AutomationJobData, delay?: number): Promise<Job<AutomationJobData>> {
+    this.setupProcessors();
     return automationQueue.add('execute-automation', data, {
       delay: delay || 0,
       attempts: 3,
@@ -735,6 +747,8 @@ export class EmailQueueService {
 
   // Queue Management Methods
   async getQueueStats() {
+    this.setupProcessors();
+    
     const [emailStats, campaignStats, automationStats, analyticsStats] = await Promise.all([
       this.getQueueJobCounts(emailQueue),
       this.getQueueJobCounts(campaignQueue),
