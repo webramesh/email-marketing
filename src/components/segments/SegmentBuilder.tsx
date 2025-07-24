@@ -253,7 +253,7 @@ export const SegmentBuilder: React.FC<SegmentBuilderProps> = ({
   const [isLoading, setIsLoading] = useState(false)
   const [isPreviewLoading, setIsPreviewLoading] = useState(false)
 
-  const generateId = () => Math.random().toString(36).substr(2, 9)
+  const generateId = () => Math.random().toString(36).substring(2, 11)
 
   const addCondition = () => {
     const newCondition: SegmentCondition = {

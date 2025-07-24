@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useId } from 'react';
 import { cn } from '@/lib/utils';
 
 export interface DropdownItemProps {
@@ -120,7 +120,8 @@ export const Dropdown: React.FC<DropdownProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const dropdownId = id || `dropdown-${Math.random().toString(36).substring(2, 9)}`;
+  const generatedId = useId();
+  const dropdownId = id || `dropdown-${generatedId}`;
   
   // Find the selected item
   const selectedItem = items.find(item => item.value === value);

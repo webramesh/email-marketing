@@ -31,6 +31,7 @@ model Tenant {
   supportTickets    SupportTicket[]
   subscriptionPlan  SubscriptionPlan?   @relation(fields: [subscriptionPlanId], references: [id])
   subscriptionPlanId String?
+  subscription      TenantSubscription?
   
   // New relationships
   campaignAnalytics CampaignAnalytics[]
@@ -369,15 +370,218 @@ enum TicketPriority {
 model SubscriptionPlan {
   id                String      @id @default(cuid())
   name              String
+  description       String?
   price             Float
-  billingCycle      String
+  currency          String      @default("USD")
+  billingCycle      String      // monthly, yearly, weekly
   features          Json
+  quotas            Json        // quota limits
+  isActive          Boolean     @default(true)
+  trialDays         Int?
+  setupFee          Float?
+  metadata          Json?
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
   tenants           Tenant[]
+  subscriptions     TenantSubscription[]
+  fromChanges       SubscriptionChange[] @relation("FromPlan")
+  toChanges         SubscriptionChange[] @relation("ToPlan")
 
   @@map("subscription_plans")
 }
+
+// Tenant Subscription Management
+model TenantSubscription {
+  id                    String              @id @default(cuid())
+  tenant                Tenant              @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId              String              @unique
+  plan                  SubscriptionPlan    @relation(fields: [planId], references: [id])
+  planId                String
+  status                SubscriptionStatus  @default(ACTIVE)
+  currentPeriodStart    DateTime
+  currentPeriodEnd      DateTime
+  cancelAtPeriodEnd     Boolean             @default(false)
+  trialEnd              DateTime?
+  customerId            String              // Payment provider customer ID
+  subscriptionId        String              // Payment provider subscription ID
+  paymentProvider       String
+  quotas                Json                // Current quota usage
+  usage                 Json                // Current usage metrics
+  billingAddress        Json?
+  taxRate               Float?
+  discountId            String?
+  metadata              Json?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+  
+  // Relationships
+  invoices              Invoice[]
+  billingCycles         BillingCycle[]
+  overageBillings       OverageBilling[]
+  subscriptionChanges   SubscriptionChange[]
+
+  @@index([tenantId])
+  @@index([planId])
+  @@index([status])
+  @@map("tenant_subscriptions")
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELLED
+  UNPAID
+  INCOMPLETE
+  INCOMPLETE_EXPIRED
+}
+
+// Billing Cycles
+model BillingCycle {
+  id                String              @id @default(cuid())
+  subscription      TenantSubscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  subscriptionId    String
+  cycleStart        DateTime
+  cycleEnd          DateTime
+  status            BillingCycleStatus  @default(PENDING)
+  invoice           Invoice?            @relation(fields: [invoiceId], references: [id])
+  invoiceId         String?
+  payment           Payment?            @relation(fields: [paymentId], references: [id])
+  paymentId         String?
+  retryCount        Int                 @default(0)
+  nextRetryAt       DateTime?
+  failureReason     String?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([subscriptionId])
+  @@index([status])
+  @@index([cycleStart])
+  @@index([cycleEnd])
+  @@map("billing_cycles")
+}
+
+enum BillingCycleStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+// Invoices
+model Invoice {
+  id                String              @id @default(cuid())
+  subscription      TenantSubscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  subscriptionId    String
+  invoiceNumber     String              @unique
+  status            InvoiceStatus       @default(OPEN)
+  currency          String              @default("USD")
+  subtotal          Float
+  taxAmount         Float               @default(0)
+  discountAmount    Float               @default(0)
+  total             Float
+  amountPaid        Float               @default(0)
+  amountDue         Float
+  dueDate           DateTime
+  paidAt            DateTime?
+  periodStart       DateTime
+  periodEnd         DateTime
+  lineItems         Json                // Array of line items
+  billingAddress    Json?
+  paymentProvider   String
+  providerInvoiceId String?
+  metadata          Json?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  
+  // Relationships
+  billingCycles     BillingCycle[]
+  payments          Payment[]
+  overageBillings   OverageBilling[]
+
+  @@index([subscriptionId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([invoiceNumber])
+  @@map("invoices")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  VOID
+  UNCOLLECTIBLE
+}
+
+// Overage Billing
+model OverageBilling {
+  id                    String              @id @default(cuid())
+  subscription          TenantSubscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  subscriptionId        String
+  resourceType          String              // emails, subscribers, campaigns, etc.
+  quotaLimit            Int
+  actualUsage           Int
+  overageAmount         Int
+  unitPrice             Float
+  billingPeriodStart    DateTime
+  billingPeriodEnd      DateTime
+  status                OverageBillingStatus @default(PENDING)
+  invoice               Invoice?            @relation(fields: [invoiceId], references: [id])
+  invoiceId             String?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
+
+  @@index([subscriptionId])
+  @@index([status])
+  @@index([resourceType])
+  @@map("overage_billings")
+}
+
+enum OverageBillingStatus {
+  PENDING
+  BILLED
+  PAID
+}
+
+// Subscription Changes (Upgrades/Downgrades)
+model SubscriptionChange {
+  id                String              @id @default(cuid())
+  subscription      TenantSubscription  @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+  subscriptionId    String
+  changeType        SubscriptionChangeType
+  fromPlan          SubscriptionPlan    @relation("FromPlan", fields: [fromPlanId], references: [id])
+  fromPlanId        String
+  toPlan            SubscriptionPlan    @relation("ToPlan", fields: [toPlanId], references: [id])
+  toPlanId          String
+  prorationAmount   Float               @default(0)
+  effectiveDate     DateTime
+  status            SubscriptionChangeStatus @default(PENDING)
+  metadata          Json?
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+
+  @@index([subscriptionId])
+  @@index([changeType])
+  @@index([status])
+  @@map("subscription_changes")
+}
+
+enum SubscriptionChangeType {
+  UPGRADE
+  DOWNGRADE
+  PLAN_CHANGE
+}
+
+enum SubscriptionChangeStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+
 
 // Email Campaign Analytics and Tracking
 model CampaignAnalytics {
@@ -630,6 +834,10 @@ model Payment {
   updatedAt         DateTime    @updatedAt
   tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   tenantId          String
+  
+  // Relationships
+  billingCycles     BillingCycle[]
+  invoices          Invoice[]
 
   @@index([tenantId])
   @@index([status])
