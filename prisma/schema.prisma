@@ -327,15 +327,95 @@ model Domain {
 model Form {
   id                String      @id @default(cuid())
   name              String
-  formType          String
-  configuration     Json
+  description       String?
+  formType          FormType    @default(SUBSCRIPTION)
+  status            FormStatus  @default(DRAFT)
+  
+  // Form configuration
+  fields            Json        // Array of form fields configuration
+  styling           Json?       // Form styling and theme configuration
+  settings          Json?       // Form behavior settings
+  
+  // Targeting and display
+  displayRules      Json?       // When and where to show the form
+  targetLists       Json?       // Array of list IDs to add subscribers to
+  
+  // Analytics
+  totalViews        Int         @default(0)
+  totalSubmissions  Int         @default(0)
+  conversionRate    Float       @default(0)
+  
+  // Embed configuration
+  embedCode         String?     @db.LongText
+  embedDomain       String?
+  
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
   tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   tenantId          String
+  
+  // Relationships
+  submissions       FormSubmission[]
+  analytics         FormAnalytics[]
 
   @@index([tenantId])
+  @@index([formType])
+  @@index([status])
   @@map("forms")
+}
+
+enum FormType {
+  SUBSCRIPTION
+  POPUP
+  EMBEDDED
+  LANDING_PAGE
+}
+
+enum FormStatus {
+  DRAFT
+  PUBLISHED
+  PAUSED
+  ARCHIVED
+}
+
+// Form Submissions
+model FormSubmission {
+  id                String      @id @default(cuid())
+  form              Form        @relation(fields: [formId], references: [id], onDelete: Cascade)
+  formId            String
+  email             String
+  firstName         String?
+  lastName          String?
+  customFields      Json?       // Additional form field data
+  ipAddress         String?
+  userAgent         String?
+  referrer          String?
+  location          Json?       // GeoIP data
+  subscriberId      String?     // If subscriber was created
+  createdAt         DateTime    @default(now())
+
+  @@index([formId])
+  @@index([email])
+  @@index([createdAt])
+  @@map("form_submissions")
+}
+
+// Form Analytics
+model FormAnalytics {
+  id                String      @id @default(cuid())
+  form              Form        @relation(fields: [formId], references: [id], onDelete: Cascade)
+  formId            String
+  date              DateTime    @db.Date
+  views             Int         @default(0)
+  submissions       Int         @default(0)
+  conversionRate    Float       @default(0)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@unique([formId, date])
+  @@index([formId])
+  @@index([date])
+  @@map("form_analytics")
 }
 
 model SupportTicket {
@@ -375,7 +455,7 @@ model SubscriptionPlan {
   currency          String      @default("USD")
   billingCycle      String      // monthly, yearly, weekly
   features          Json
-  quotas            Json        // quota limits
+  quotas            Json        @default("{}") // quota limits
   isActive          Boolean     @default(true)
   trialDays         Int?
   setupFee          Float?
