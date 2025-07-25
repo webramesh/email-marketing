@@ -1,6 +1,6 @@
-import { 
-  PaymentProvider, 
-  PaymentProviderType, 
+import {
+  PaymentProvider,
+  PaymentProviderType,
   PaymentProviderConfig,
   PaymentRequest,
   PaymentResult,
@@ -14,7 +14,7 @@ import {
   PaymentMethodData,
   FraudCheckResult,
   PaymentAuditLog,
-  PaymentAuditType
+  PaymentAuditType,
 } from '@/types/payment';
 
 import { DodoProvider } from './providers/dodo.provider';
@@ -25,25 +25,35 @@ import { SquareProvider } from './providers/square.provider';
 import { PaddleProvider } from './providers/paddle.provider';
 import { PayUMoneyProvider } from './providers/payumoney.provider';
 import { ProviderCapabilitiesService } from './provider-capabilities.service';
+import { PaymentAuditLogger } from './audit-logger.service';
+import { FraudDetectionService } from './fraud-detection.service';
+import { PaymentSecurityService } from './payment-security.service';
 
 export class PaymentService {
   private providers: Map<PaymentProviderType, PaymentProvider> = new Map();
   private activeProviders: PaymentProviderConfig[] = [];
   private defaultProvider?: PaymentProviderType;
+  private auditLogger: PaymentAuditLogger;
+  private fraudDetection: FraudDetectionService;
+  private securityService: PaymentSecurityService;
 
   constructor(configs: PaymentProviderConfig[]) {
+    this.auditLogger = PaymentAuditLogger.getInstance();
+    this.fraudDetection = FraudDetectionService.getInstance();
+    this.securityService = PaymentSecurityService.getInstance();
     this.initializeProviders(configs);
   }
 
   private initializeProviders(configs: PaymentProviderConfig[]): void {
-    this.activeProviders = configs.filter(config => config.isActive)
+    this.activeProviders = configs
+      .filter(config => config.isActive)
       .sort((a, b) => a.priority - b.priority);
 
     for (const config of this.activeProviders) {
       try {
         const provider = this.createProvider(config);
         this.providers.set(config.type, provider);
-        
+
         // Set the first active provider as default
         if (!this.defaultProvider) {
           this.defaultProvider = config.type;
@@ -76,45 +86,110 @@ export class PaymentService {
   }
 
   async processPayment(
-    request: PaymentRequest, 
+    request: PaymentRequest,
+    context: {
+      tenantId: string;
+      userId?: string;
+      ipAddress?: string;
+      userAgent?: string;
+      deviceFingerprint?: any;
+      behaviorAnalysis?: any;
+      geoLocation?: any;
+    },
     providerType?: PaymentProviderType
   ): Promise<PaymentResult> {
     const provider = this.getProvider(providerType);
-    
+
     try {
-      // Perform fraud check before processing
-      const fraudCheck = await this.performFraudCheck(request);
+      // Perform comprehensive fraud check before processing
+      const fraudCheck = await this.fraudDetection.performFraudCheck(request, context);
+
       if (fraudCheck.recommendation === 'decline') {
+        // Log declined transaction
+        await this.auditLogger.logPaymentEvent({
+          tenantId: context.tenantId,
+          userId: context.userId,
+          type: PaymentAuditType.FRAUD_DETECTED,
+          provider: provider.type,
+          amount: request.amount,
+          currency: request.currency,
+          status: 'declined',
+          fraudScore: fraudCheck.riskScore,
+          ipAddress: context.ipAddress,
+          userAgent: context.userAgent,
+          metadata: {
+            fraudLevel: fraudCheck.riskLevel,
+            reasons: fraudCheck.reasons,
+            recommendation: fraudCheck.recommendation,
+          },
+        });
+
         return {
           success: false,
           paymentId: '',
           status: PaymentStatus.FAILED,
           amount: request.amount,
           currency: request.currency,
-          error: 'Payment declined due to fraud detection'
+          error: 'Payment declined due to fraud detection',
         };
       }
 
+      // Process payment with provider
       const result = await provider.processPayment(request);
-      
-      // Log the transaction
-      await this.logTransaction({
-        type: 'payment',
+
+      // Log successful/failed transaction with comprehensive audit
+      await this.auditLogger.logPaymentEvent({
+        tenantId: context.tenantId,
+        userId: context.userId,
+        type: PaymentAuditType.PAYMENT_CREATED,
         provider: provider.type,
-        request,
-        result,
-        fraudCheck
+        paymentId: result.paymentId,
+        customerId: request.customerId,
+        amount: request.amount,
+        currency: request.currency,
+        status: result.success ? 'success' : 'failed',
+        fraudScore: fraudCheck.riskScore,
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+        metadata: {
+          fraudLevel: fraudCheck.riskLevel,
+          fraudRecommendation: fraudCheck.recommendation,
+          providerResponse: result.providerResponse ? 'included' : 'none',
+          errorMessage: result.error,
+        },
+        sensitiveData: {
+          paymentMethodId: request.paymentMethodId,
+          description: request.description,
+          idempotencyKey: request.idempotencyKey,
+        },
       });
 
       return result;
     } catch (error: any) {
       console.error(`Payment processing failed with ${provider.name}:`, error);
-      
+
+      // Log error
+      await this.auditLogger.logPaymentEvent({
+        tenantId: context.tenantId,
+        userId: context.userId,
+        type: PaymentAuditType.PAYMENT_FAILED,
+        provider: provider.type,
+        amount: request.amount,
+        currency: request.currency,
+        status: 'error',
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+        metadata: {
+          errorMessage: error.message,
+          errorStack: error.stack,
+        },
+      });
+
       // Try fallback provider if available
       const fallbackProvider = this.getFallbackProvider(provider.type);
       if (fallbackProvider) {
         console.log(`Attempting fallback to ${fallbackProvider.name}`);
-        return await fallbackProvider.processPayment(request);
+        return await this.processPayment(request, context, fallbackProvider.type);
       }
 
       return {
@@ -123,132 +198,269 @@ export class PaymentService {
         status: PaymentStatus.FAILED,
         amount: request.amount,
         currency: request.currency,
-        error: error.message
+        error: error.message,
       };
     }
   }
 
   async createCustomer(
-    customer: CustomerData, 
+    customer: CustomerData,
+    context: {
+      tenantId: string;
+      userId?: string;
+      ipAddress?: string;
+      userAgent?: string;
+    },
     providerType?: PaymentProviderType
   ): Promise<CustomerResult> {
     const provider = this.getProvider(providerType);
-    
+
     try {
-      const result = await provider.createCustomer(customer);
-      
-      await this.logTransaction({
-        type: 'customer_creation',
+      // Validate and sanitize customer data
+      const validatedCustomer = await this.validateCustomerData(customer);
+
+      const result = await provider.createCustomer(validatedCustomer);
+
+      // Log customer creation with audit trail
+      await this.auditLogger.logPaymentEvent({
+        tenantId: context.tenantId,
+        userId: context.userId,
+        type: PaymentAuditType.CUSTOMER_CREATED,
         provider: provider.type,
-        request: customer,
-        result
+        customerId: result.customerId,
+        status: result.success ? 'success' : 'failed',
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+        metadata: {
+          customerEmail: customer.email,
+          errorMessage: result.error,
+        },
+        sensitiveData: {
+          customerName: customer.name,
+          customerPhone: customer.phone,
+          customerAddress: customer.address,
+        },
       });
 
       return result;
     } catch (error: any) {
       console.error(`Customer creation failed with ${provider.name}:`, error);
+
+      // Log error
+      await this.auditLogger.logPaymentEvent({
+        tenantId: context.tenantId,
+        userId: context.userId,
+        type: PaymentAuditType.CUSTOMER_CREATED,
+        provider: provider.type,
+        status: 'error',
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+        metadata: {
+          errorMessage: error.message,
+          customerEmail: customer.email,
+        },
+      });
+
       return {
         success: false,
         customerId: '',
-        error: error.message
+        error: error.message,
       };
     }
   }
 
   async createSubscription(
-    subscription: SubscriptionRequest, 
+    subscription: SubscriptionRequest,
+    context: {
+      tenantId: string;
+      userId?: string;
+      ipAddress?: string;
+      userAgent?: string;
+    },
     providerType?: PaymentProviderType
   ): Promise<SubscriptionResult> {
     const provider = this.getProvider(providerType);
-    
+
     try {
       const result = await provider.createSubscription(subscription);
-      
-      await this.logTransaction({
-        type: 'subscription_creation',
+
+      // Log subscription creation with audit trail
+      await this.auditLogger.logPaymentEvent({
+        tenantId: context.tenantId,
+        userId: context.userId,
+        type: PaymentAuditType.SUBSCRIPTION_CREATED,
         provider: provider.type,
-        request: subscription,
-        result
+        subscriptionId: result.subscriptionId,
+        customerId: subscription.customerId,
+        status: result.success ? 'success' : 'failed',
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+        metadata: {
+          planId: subscription.planId,
+          trialDays: subscription.trialDays,
+          errorMessage: result.error,
+        },
+        sensitiveData: {
+          subscriptionMetadata: subscription.metadata,
+        },
       });
 
       return result;
     } catch (error: any) {
       console.error(`Subscription creation failed with ${provider.name}:`, error);
+
+      // Log error
+      await this.auditLogger.logPaymentEvent({
+        tenantId: context.tenantId,
+        userId: context.userId,
+        type: PaymentAuditType.SUBSCRIPTION_CREATED,
+        provider: provider.type,
+        customerId: subscription.customerId,
+        status: 'error',
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+        metadata: {
+          errorMessage: error.message,
+          planId: subscription.planId,
+        },
+      });
+
       return {
         success: false,
         subscriptionId: '',
-        status: subscription.metadata?.defaultStatus || 'cancelled' as any,
+        status: subscription.metadata?.defaultStatus || ('cancelled' as any),
         currentPeriodStart: new Date(),
         currentPeriodEnd: new Date(),
-        error: error.message
+        error: error.message,
       };
     }
   }
 
   async cancelSubscription(
-    subscriptionId: string, 
+    subscriptionId: string,
+    context: {
+      tenantId: string;
+      userId?: string;
+      ipAddress?: string;
+      userAgent?: string;
+    },
     providerType?: PaymentProviderType
   ): Promise<void> {
     const provider = this.getProvider(providerType);
-    
+
     try {
       await provider.cancelSubscription(subscriptionId);
-      
-      await this.logTransaction({
-        type: 'subscription_cancellation',
+
+      // Log subscription cancellation with audit trail
+      await this.auditLogger.logPaymentEvent({
+        tenantId: context.tenantId,
+        userId: context.userId,
+        type: PaymentAuditType.SUBSCRIPTION_CANCELLED,
         provider: provider.type,
-        request: { subscriptionId },
-        result: { success: true }
+        subscriptionId,
+        status: 'success',
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+        metadata: {
+          action: 'subscription_cancelled',
+        },
       });
     } catch (error: any) {
       console.error(`Subscription cancellation failed with ${provider.name}:`, error);
+
+      // Log error
+      await this.auditLogger.logPaymentEvent({
+        tenantId: context.tenantId,
+        userId: context.userId,
+        type: PaymentAuditType.SUBSCRIPTION_CANCELLED,
+        provider: provider.type,
+        subscriptionId,
+        status: 'error',
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+        metadata: {
+          errorMessage: error.message,
+        },
+      });
+
       throw error;
     }
   }
 
   async refundPayment(
-    paymentId: string, 
-    amount?: number, 
+    paymentId: string,
+    context: {
+      tenantId: string;
+      userId?: string;
+      ipAddress?: string;
+      userAgent?: string;
+    },
+    amount?: number,
     providerType?: PaymentProviderType
   ): Promise<RefundResult> {
     const provider = this.getProvider(providerType);
-    
+
     try {
       const result = await provider.refundPayment(paymentId, amount);
-      
-      await this.logTransaction({
-        type: 'refund',
+
+      // Log refund with audit trail
+      await this.auditLogger.logPaymentEvent({
+        tenantId: context.tenantId,
+        userId: context.userId,
+        type: PaymentAuditType.PAYMENT_REFUNDED,
         provider: provider.type,
-        request: { paymentId, amount },
-        result
+        paymentId,
+        amount: result.amount,
+        currency: 'USD', // Would be retrieved from original payment
+        status: result.success ? 'success' : 'failed',
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+        metadata: {
+          refundId: result.refundId,
+          refundAmount: result.amount,
+          errorMessage: result.error,
+        },
       });
 
       return result;
     } catch (error: any) {
       console.error(`Refund failed with ${provider.name}:`, error);
+
+      // Log error
+      await this.auditLogger.logPaymentEvent({
+        tenantId: context.tenantId,
+        userId: context.userId,
+        type: PaymentAuditType.PAYMENT_REFUNDED,
+        provider: provider.type,
+        paymentId,
+        amount: amount || 0,
+        status: 'error',
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+        metadata: {
+          errorMessage: error.message,
+        },
+      });
+
       return {
         success: false,
         refundId: '',
         amount: amount || 0,
         status: 'failed' as any,
-        error: error.message
+        error: error.message,
       };
     }
   }
 
   async getPaymentStatus(
-    paymentId: string, 
+    paymentId: string,
     providerType?: PaymentProviderType
   ): Promise<PaymentStatus> {
     const provider = this.getProvider(providerType);
     return await provider.getPaymentStatus(paymentId);
   }
 
-  validateWebhook(
-    payload: any, 
-    signature: string, 
-    providerType: PaymentProviderType
-  ): boolean {
+  validateWebhook(payload: any, signature: string, providerType: PaymentProviderType): boolean {
     const provider = this.providers.get(providerType);
     if (!provider) {
       throw new Error(`Provider ${providerType} not found`);
@@ -256,19 +468,22 @@ export class PaymentService {
     return provider.validateWebhook(payload, signature);
   }
 
-  async getBillingProfile(customerId: string, providerType?: PaymentProviderType): Promise<BillingProfile | null> {
+  async getBillingProfile(
+    customerId: string,
+    providerType?: PaymentProviderType
+  ): Promise<BillingProfile | null> {
     // This would typically fetch from database
     // Simplified implementation for now
     return null;
   }
 
   async addPaymentMethod(
-    customerId: string, 
-    paymentMethodData: Omit<PaymentMethodData, 'id'>, 
+    customerId: string,
+    paymentMethodData: Omit<PaymentMethodData, 'id'>,
     providerType?: PaymentProviderType
   ): Promise<PaymentMethodData> {
     const provider = this.getProvider(providerType);
-    
+
     try {
       // Validate payment method data
       if (!paymentMethodData.type || !paymentMethodData.last4) {
@@ -284,7 +499,7 @@ export class PaymentService {
       // Create payment method with provider
       const paymentMethod: PaymentMethodData = {
         id: `pm_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`,
-        ...paymentMethodData
+        ...paymentMethodData,
       };
 
       // Log the addition for audit purposes
@@ -292,7 +507,7 @@ export class PaymentService {
         type: 'payment_method_addition',
         provider: provider.type,
         request: { customerId, paymentMethodData },
-        result: { success: true, paymentMethodId: paymentMethod.id }
+        result: { success: true, paymentMethodId: paymentMethod.id },
       });
 
       return paymentMethod;
@@ -302,6 +517,35 @@ export class PaymentService {
     }
   }
 
+  private async validateCustomerData(customer: CustomerData): Promise<CustomerData> {
+    // Sanitize email first, then validate
+    const trimmedEmail = customer.email.toLowerCase().trim();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(trimmedEmail)) {
+      throw new Error('Invalid email format');
+    }
+
+    // Sanitize and validate other fields
+    const validatedCustomer: CustomerData = {
+      email: trimmedEmail,
+      name: customer.name?.trim(),
+      phone: customer.phone?.replace(/[^\d+\-\s()]/g, ''),
+      address: customer.address
+        ? {
+            line1: customer.address.line1.trim(),
+            line2: customer.address.line2?.trim(),
+            city: customer.address.city.trim(),
+            state: customer.address.state?.trim(),
+            postalCode: customer.address.postalCode.trim(),
+            country: customer.address.country.toUpperCase().trim(),
+          }
+        : undefined,
+      metadata: customer.metadata,
+    };
+
+    return validatedCustomer;
+  }
+
   private async verifyCustomerExists(customerId: string): Promise<boolean> {
     // In production, this would verify the customer exists with the provider
     // For now, return true for non-empty customer IDs
@@ -309,11 +553,11 @@ export class PaymentService {
   }
 
   async removePaymentMethod(
-    paymentMethodId: string, 
+    paymentMethodId: string,
     providerType?: PaymentProviderType
   ): Promise<void> {
     const provider = this.getProvider(providerType);
-    
+
     try {
       // Implementation would depend on the specific provider
       // For now, this is a simplified implementation
@@ -321,7 +565,7 @@ export class PaymentService {
         type: 'payment_method_removal',
         provider: provider.type,
         request: { paymentMethodId },
-        result: { success: true }
+        result: { success: true },
       });
     } catch (error: any) {
       console.error(`Payment method removal failed with ${provider.name}:`, error);
@@ -335,7 +579,7 @@ export class PaymentService {
     providerType?: PaymentProviderType
   ): Promise<void> {
     const provider = this.getProvider(providerType);
-    
+
     try {
       // Implementation would depend on the specific provider
       // For now, this is a simplified implementation
@@ -343,7 +587,7 @@ export class PaymentService {
         type: 'default_payment_method_update',
         provider: provider.type,
         request: { customerId, paymentMethodId },
-        result: { success: true }
+        result: { success: true },
       });
     } catch (error: any) {
       console.error(`Set default payment method failed with ${provider.name}:`, error);
@@ -428,257 +672,132 @@ export class PaymentService {
     return this.providers.get(fallbackConfig.type) || null;
   }
 
-  private async performFraudCheck(request: PaymentRequest): Promise<FraudCheckResult> {
-    let riskScore = 0;
-    const reasons: string[] = [];
-    
-    // Amount-based risk assessment with enhanced thresholds
-    if (request.amount > 50000) {
-      riskScore += 50;
-      reasons.push('Very high transaction amount');
-    } else if (request.amount > 25000) {
-      riskScore += 40;
-      reasons.push('High transaction amount');
-    } else if (request.amount > 10000) {
-      riskScore += 30;
-      reasons.push('Large transaction amount');
-    } else if (request.amount > 5000) {
-      riskScore += 20;
-      reasons.push('Above average transaction amount');
-    } else if (request.amount > 1000) {
-      riskScore += 10;
-      reasons.push('Moderate transaction amount');
+  /**
+   * Tokenize payment method for secure storage
+   */
+  async tokenizePaymentMethod(
+    cardData: {
+      number: string;
+      expiryMonth: number;
+      expiryYear: number;
+      cvv: string;
+      holderName: string;
+    },
+    context: {
+      tenantId: string;
+      userId?: string;
+      ipAddress?: string;
+      userAgent?: string;
     }
-    
-    // Currency risk assessment
-    const highRiskCurrencies = ['BTC', 'ETH', 'USDT', 'XRP', 'LTC'];
-    const mediumRiskCurrencies = ['EUR', 'GBP', 'JPY', 'AUD', 'CAD'];
-    
-    if (highRiskCurrencies.includes(request.currency.toUpperCase())) {
-      riskScore += 25;
-      reasons.push('High-risk cryptocurrency');
-    } else if (!mediumRiskCurrencies.includes(request.currency.toUpperCase()) && request.currency.toUpperCase() !== 'USD') {
-      riskScore += 15;
-      reasons.push('Uncommon currency');
-    }
-    
-    // Enhanced metadata-based security checks
-    if (request.metadata?.isHighRisk) riskScore += 50;
-    if (request.metadata?.vpnDetected) riskScore += 15;
-    if (request.metadata?.proxyDetected) riskScore += 20;
-    if (request.metadata?.torDetected) riskScore += 35;
-    if (request.metadata?.suspiciousEmail) riskScore += 15;
-    if (request.metadata?.disposableEmail) riskScore += 20;
-    if (request.metadata?.newAccount && request.amount > 1000) riskScore += 25;
-    
-    // Device and browser fingerprinting
-    if (request.metadata?.deviceFingerprint) {
-      if (request.metadata.suspiciousDevice) riskScore += 20;
-      if (request.metadata.multipleAccounts) riskScore += 15;
-    }
-    
-    // Time-based risk assessment
-    const hour = new Date().getHours();
-    const day = new Date().getDay();
-    
-    // Unusual hours (late night/early morning)
-    if (hour < 6 || hour > 22) riskScore += 5;
-    
-    // Weekend transactions for business accounts
-    if ((day === 0 || day === 6) && request.metadata?.accountType === 'business') {
-      riskScore += 10;
-    }
-    
-    // Enhanced frequency and velocity checks
-    if (request.metadata?.recentFailedAttempts) {
-      if (request.metadata.recentFailedAttempts > 5) riskScore += 40;
-      else if (request.metadata.recentFailedAttempts > 3) riskScore += 25;
-      else if (request.metadata.recentFailedAttempts > 1) riskScore += 10;
-    }
-    
-    if (request.metadata?.dailyTransactionCount) {
-      if (request.metadata.dailyTransactionCount > 20) riskScore += 25;
-      else if (request.metadata.dailyTransactionCount > 10) riskScore += 15;
-      else if (request.metadata.dailyTransactionCount > 5) riskScore += 5;
-    }
-    
-    if (request.metadata?.dailyTransactionVolume && request.metadata.dailyTransactionVolume > 100000) {
-      riskScore += 30;
-    }
-    
-    // Geographic and IP-based risk assessment
-    const highRiskCountries = ['AF', 'IQ', 'LY', 'SO', 'SY', 'YE']; // High-risk country codes
-    const mediumRiskCountries = ['CN', 'RU', 'IR', 'KP', 'MM']; // Medium-risk country codes
-    
-    if (request.metadata?.country) {
-      if (highRiskCountries.includes(request.metadata.country)) {
-        riskScore += 30;
-      } else if (mediumRiskCountries.includes(request.metadata.country)) {
-        riskScore += 15;
-      }
-    }
-    
-    // IP reputation checks
-    if (request.metadata?.ipReputation) {
-      if (request.metadata.ipReputation === 'malicious') riskScore += 40;
-      else if (request.metadata.ipReputation === 'suspicious') riskScore += 20;
-      else if (request.metadata.ipReputation === 'unknown') riskScore += 10;
-    }
-    
-    // Behavioral analysis
-    if (request.metadata?.behaviorScore && request.metadata.behaviorScore < 30) {
-      riskScore += 25;
-    }
-    
-    // Payment method risk assessment
-    if (request.metadata?.paymentMethodRisk) {
-      if (request.metadata.paymentMethodRisk === 'high') riskScore += 20;
-      else if (request.metadata.paymentMethodRisk === 'medium') riskScore += 10;
-    }
-    
-    // Machine learning risk score (if available)
-    if (request.metadata?.mlRiskScore) {
-      riskScore += Math.round(request.metadata.mlRiskScore * 0.3);
-    }
-    
-    // Determine risk level and recommendation with enhanced thresholds
-    let riskLevel: 'low' | 'medium' | 'high';
-    let recommendation: 'approve' | 'review' | 'decline';
-    
-    if (riskScore < 15) {
-      riskLevel = 'low';
-      recommendation = 'approve';
-    } else if (riskScore < 40) {
-      riskLevel = 'medium';
-      recommendation = 'review';
-    } else if (riskScore < 70) {
-      riskLevel = 'high';
-      recommendation = 'review';
-    } else {
-      riskLevel = 'high';
-      recommendation = 'decline';
-    }
+  ): Promise<any> {
+    try {
+      const tokenizedCard = await this.securityService.tokenizeCard(cardData);
 
-    // Enhanced verification checks
-    const checks = {
-      cvv: request.metadata?.cvvCheck !== false,
-      address: request.metadata?.addressCheck !== false,
-      postalCode: request.metadata?.postalCodeCheck !== false
-    };
+      // Log tokenization event
+      await this.auditLogger.logPaymentEvent({
+        tenantId: context.tenantId,
+        userId: context.userId,
+        type: PaymentAuditType.PAYMENT_METHOD_ADDED,
+        provider: this.defaultProvider || PaymentProviderType.STRIPE,
+        status: 'success',
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+        metadata: {
+          tokenId: tokenizedCard.token,
+          cardBrand: tokenizedCard.brand,
+          last4: tokenizedCard.last4,
+        },
+      });
 
-    // Override recommendation based on critical security flags
-    if (request.metadata?.knownFraudster || request.metadata?.blacklisted) {
-      recommendation = 'decline';
-      riskLevel = 'high';
-      riskScore = Math.max(riskScore, 100);
+      return tokenizedCard;
+    } catch (error: any) {
+      console.error('Payment method tokenization failed:', error);
+
+      // Log error
+      await this.auditLogger.logPaymentEvent({
+        tenantId: context.tenantId,
+        userId: context.userId,
+        type: PaymentAuditType.PAYMENT_METHOD_ADDED,
+        provider: this.defaultProvider || PaymentProviderType.STRIPE,
+        status: 'failed',
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+        metadata: {
+          errorMessage: error.message,
+        },
+      });
+
+      throw error;
     }
+  }
 
-    return {
-      riskScore,
-      riskLevel,
-      checks,
-      recommendation,
-      reasons,
-      timestamp: new Date()
-    };
+  /**
+   * Perform PCI DSS compliance check
+   */
+  async performComplianceCheck(tenantId: string): Promise<any> {
+    return await this.securityService.performPCIComplianceCheck();
+  }
+
+  /**
+   * Perform comprehensive security audit
+   */
+  async performSecurityAudit(tenantId: string): Promise<any> {
+    return await this.securityService.performSecurityAudit(tenantId);
+  }
+
+  /**
+   * Get fraud statistics for monitoring
+   */
+  async getFraudStatistics(tenantId: string, startDate: Date, endDate: Date): Promise<any> {
+    return await this.fraudDetection.getFraudStatistics(tenantId, startDate, endDate);
+  }
+
+  /**
+   * Verify audit record integrity
+   */
+  async verifyAuditRecord(recordId: string): Promise<any> {
+    return await this.auditLogger.verifyAuditRecord(recordId);
+  }
+
+  /**
+   * Get audit trail for compliance reporting
+   */
+  async getAuditTrail(filters: {
+    tenantId: string;
+    paymentId?: string;
+    customerId?: string;
+    subscriptionId?: string;
+    userId?: string;
+    type?: PaymentAuditType;
+    startDate?: Date;
+    endDate?: Date;
+    limit?: number;
+  }): Promise<any> {
+    return await this.auditLogger.getAuditTrail(filters);
+  }
+
+  /**
+   * Generate compliance report
+   */
+  async generateComplianceReport(tenantId: string, startDate: Date, endDate: Date): Promise<any> {
+    return await this.auditLogger.generateComplianceReport(tenantId, startDate, endDate);
   }
 
   private async logTransaction(data: {
     type: string;
     provider: PaymentProviderType;
-    request: any;
-    result: any;
-    fraudCheck?: FraudCheckResult;
+    request?: any;
+    result?: any;
+    error?: any;
     tenantId?: string;
     userId?: string;
     ipAddress?: string;
     userAgent?: string;
   }): Promise<void> {
     try {
-      const auditLog: Omit<PaymentAuditLog, 'id'> = {
-        tenantId: data.tenantId || 'unknown',
-        userId: data.userId,
-        type: this.mapToAuditType(data.type),
-        provider: data.provider,
-        paymentId: data.result.paymentId || data.result.subscriptionId || data.result.customerId,
-        customerId: data.request.customerId,
-        subscriptionId: data.result.subscriptionId,
-        amount: data.request.amount || data.result.amount,
-        currency: data.request.currency || data.result.currency,
-        status: data.result.success ? 'success' : 'failed',
-        fraudScore: data.fraudCheck?.riskScore,
-        ipAddress: data.ipAddress,
-        userAgent: data.userAgent,
-        metadata: {
-          requestId: data.request.idempotencyKey,
-          fraudLevel: data.fraudCheck?.riskLevel,
-          fraudRecommendation: data.fraudCheck?.recommendation,
-          providerResponse: data.result.providerResponse ? 'included' : 'none',
-          errorMessage: data.result.error
-        },
-        createdAt: new Date(),
-        immutableHash: this.generateAuditHash({
-          type: data.type,
-          provider: data.provider,
-          amount: data.request.amount,
-          timestamp: new Date().toISOString(),
-          tenantId: data.tenantId
-        })
-      };
-
-      // In production, this would be stored in a secure, immutable audit log database
-      // For now, we'll use structured logging
-      console.log('PAYMENT_AUDIT_LOG:', JSON.stringify(auditLog, null, 2));
-
-      // Store in database (would be implemented with actual database)
-      // await this.auditLogRepository.create(auditLog);
-
-      // For high-risk transactions, also log to security monitoring
-      if (data.fraudCheck?.riskLevel === 'high') {
-        console.warn('HIGH_RISK_PAYMENT_DETECTED:', {
-          tenantId: data.tenantId,
-          userId: data.userId,
-          amount: data.request.amount,
-          riskScore: data.fraudCheck.riskScore,
-          recommendation: data.fraudCheck.recommendation,
-          timestamp: new Date().toISOString()
-        });
-      }
+      await this.auditLogger.logTransaction(data);
     } catch (error) {
-      console.error('Failed to log payment transaction:', error);
-      // Audit logging failures should not break the payment flow
-      // but should be monitored and alerted
+      console.error('Failed to log transaction:', error);
     }
-  }
-
-  private mapToAuditType(type: string): PaymentAuditType {
-    switch (type) {
-      case 'payment':
-        return PaymentAuditType.PAYMENT_CREATED;
-      case 'customer_creation':
-        return PaymentAuditType.CUSTOMER_CREATED;
-      case 'subscription_creation':
-        return PaymentAuditType.SUBSCRIPTION_CREATED;
-      case 'subscription_cancellation':
-        return PaymentAuditType.SUBSCRIPTION_CANCELLED;
-      case 'refund':
-        return PaymentAuditType.PAYMENT_REFUNDED;
-      case 'payment_method_addition':
-        return PaymentAuditType.PAYMENT_METHOD_ADDED;
-      case 'payment_method_removal':
-        return PaymentAuditType.PAYMENT_METHOD_REMOVED;
-      case 'fraud_detection':
-        return PaymentAuditType.FRAUD_DETECTED;
-      case 'webhook':
-        return PaymentAuditType.WEBHOOK_RECEIVED;
-      default:
-        return PaymentAuditType.PAYMENT_CREATED;
-    }
-  }
-
-  private generateAuditHash(data: any): string {
-    const crypto = require('crypto');
-    const hashData = JSON.stringify(data, Object.keys(data).sort());
-    return crypto.createHash('sha256').update(hashData).digest('hex');
   }
 }

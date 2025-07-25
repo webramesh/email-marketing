@@ -190,8 +190,10 @@ export enum PaymentAuditType {
   SUBSCRIPTION_CANCELLED = 'subscription_cancelled',
   PAYMENT_METHOD_ADDED = 'payment_method_added',
   PAYMENT_METHOD_REMOVED = 'payment_method_removed',
+  PAYMENT_METHOD_UPDATED = 'payment_method_updated',
   FRAUD_DETECTED = 'fraud_detected',
-  WEBHOOK_RECEIVED = 'webhook_received'
+  WEBHOOK_RECEIVED = 'webhook_received',
+  SECURITY_EVENT = 'security_event'
 }
 
 export interface PaymentSecurityConfig {
