@@ -20,6 +20,11 @@ interface Form {
   conversionRate: number;
   createdAt: string;
   updatedAt: string;
+  tenantId: string;
+  embedCode?: string;
+  fields?: any;
+  styling?: any;
+  settings?: any;
   _count: {
     submissions: number;
   };
@@ -183,6 +188,10 @@ export function FormList({ onCreateForm }: FormListProps) {
   if (showBuilder) {
     return (
       <FormBuilder
+        formId={editingForm?.id}
+        tenantId={editingForm?.tenantId}
+        formType={editingForm?.formType}
+        embedCode={editingForm?.embedCode}
         initialFields={editingForm?.fields as FormField[] || []}
         initialStyling={editingForm?.styling as FormStyling}
         initialSettings={editingForm?.settings as FormSettings}

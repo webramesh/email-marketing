@@ -219,6 +219,27 @@ export class FormService {
   }
 
   /**
+   * Get public form data (for embedding)
+   */
+  static async getPublicForm(formId: string) {
+    const form = await prisma.form.findUnique({
+      where: { id: formId },
+      select: {
+        id: true,
+        name: true,
+        formType: true,
+        status: true,
+        fields: true,
+        styling: true,
+        settings: true,
+        tenantId: true,
+      },
+    });
+
+    return form;
+  }
+
+  /**
    * Get all forms for a tenant
    */
   static async getForms(
