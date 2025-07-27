@@ -6,6 +6,44 @@ jest.mock('../providers/stripe.provider');
 jest.mock('../providers/paypal.provider');
 jest.mock('../providers/dodo.provider');
 
+// Mock the audit logger and fraud detection services
+jest.mock('../audit-logger.service', () => ({
+  PaymentAuditLogger: {
+    getInstance: jest.fn().mockReturnValue({
+      logPaymentEvent: jest.fn().mockResolvedValue(undefined),
+      storeAuditRecord: jest.fn().mockResolvedValue(undefined)
+    })
+  }
+}));
+
+jest.mock('../fraud-detection.service', () => ({
+  FraudDetectionService: {
+    getInstance: jest.fn().mockReturnValue({
+      performFraudCheck: jest.fn().mockResolvedValue({
+        riskScore: 0.1,
+        riskLevel: 'low',
+        recommendation: 'approve',
+        checks: {
+          cvv: true,
+          address: true,
+          postalCode: true
+        },
+        timestamp: new Date()
+      })
+    })
+  }
+}));
+
+jest.mock('../payment-security.service', () => ({
+  PaymentSecurityService: {
+    getInstance: jest.fn().mockReturnValue({
+      encryptSensitiveData: jest.fn().mockReturnValue('encrypted_data'),
+      decryptSensitiveData: jest.fn().mockReturnValue('decrypted_data'),
+      validatePaymentData: jest.fn().mockReturnValue(true)
+    })
+  }
+}));
+
 const mockConfigs: PaymentProviderConfig[] = [
   {
     type: PaymentProviderType.STRIPE,
@@ -42,6 +80,13 @@ const mockConfigs: PaymentProviderConfig[] = [
 
 describe('PaymentService', () => {
   let paymentService: PaymentService;
+
+  const mockContext = {
+    tenantId: 'tenant_123',
+    userId: 'user_123',
+    ipAddress: '127.0.0.1',
+    userAgent: 'test-agent'
+  };
 
   beforeEach(() => {
     paymentService = new PaymentService(mockConfigs);
@@ -86,7 +131,7 @@ describe('PaymentService', () => {
         amount: 100,
         currency: 'USD',
         description: 'Test payment'
-      });
+      }, mockContext);
 
       expect(result.success).toBe(true);
       expect(result.paymentId).toBe('pi_123');
@@ -114,7 +159,7 @@ describe('PaymentService', () => {
         amount: 100,
         currency: 'USD',
         description: 'Test payment'
-      }, PaymentProviderType.PAYPAL);
+      }, mockContext, PaymentProviderType.PAYPAL);
 
       expect(result.success).toBe(true);
       expect(result.paymentId).toBe('paypal_123');
@@ -132,7 +177,7 @@ describe('PaymentService', () => {
         amount: 100,
         currency: 'USD',
         description: 'Test payment'
-      });
+      }, mockContext);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Payment failed');
@@ -162,7 +207,7 @@ describe('PaymentService', () => {
         amount: 100,
         currency: 'USD',
         description: 'Test payment'
-      });
+      }, mockContext);
 
       expect(result.success).toBe(true);
       expect(result.paymentId).toBe('paypal_fallback_123');
@@ -185,7 +230,7 @@ describe('PaymentService', () => {
       const result = await paymentService.createCustomer({
         email: 'test@example.com',
         name: 'Test User'
-      });
+      }, mockContext);
 
       expect(result.success).toBe(true);
       expect(result.customerId).toBe('cus_123');
@@ -205,7 +250,7 @@ describe('PaymentService', () => {
       const result = await paymentService.createCustomer({
         email: 'test@example.com',
         name: 'Test User'
-      });
+      }, mockContext);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Customer creation failed');
@@ -229,7 +274,7 @@ describe('PaymentService', () => {
       const result = await paymentService.createSubscription({
         customerId: 'cus_123',
         planId: 'plan_123'
-      });
+      }, mockContext);
 
       expect(result.success).toBe(true);
       expect(result.subscriptionId).toBe('sub_123');
@@ -253,7 +298,7 @@ describe('PaymentService', () => {
 
       jest.spyOn(paymentService, 'getProvider').mockReturnValue(mockProvider as any);
 
-      const result = await paymentService.refundPayment('pi_123', 50);
+      const result = await paymentService.refundPayment('pi_123', mockContext, 50);
 
       expect(result.success).toBe(true);
       expect(result.refundId).toBe('ref_123');
@@ -312,7 +357,7 @@ describe('PaymentService', () => {
         amount: 50, // Low amount
         currency: 'USD',
         description: 'Low risk payment'
-      });
+      }, mockContext);
 
       expect(result.success).toBe(true);
       expect(mockProvider.processPayment).toHaveBeenCalled();
@@ -324,7 +369,7 @@ describe('PaymentService', () => {
         currency: 'USD',
         description: 'High risk payment',
         metadata: { isHighRisk: true }
-      });
+      }, mockContext);
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('Payment declined due to fraud detection');
