@@ -11,8 +11,12 @@ const analyticsQuerySchema = z.object({
 /**
  * GET /api/forms/[id]/analytics - Get form analytics data
  */
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
+    const { id } = await params
     const session = await auth();
     if (!session?.user?.tenantId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -24,7 +28,7 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
       type: searchParams.get('type'),
     });
 
-    const formId = params.id;
+    const formId = id;
     const tenantId = session.user.tenantId;
 
     const endDate = new Date();
@@ -73,9 +77,13 @@ export async function GET(request: NextRequest, { params }: { params: { id: stri
 /**
  * POST /api/forms/[id]/analytics - Track form events
  */
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(
+  request: NextRequest, 
+  { params }: { params: Promise<{ id: string }> }
+) {
   try {
-    const formId = params.id;
+    const { id } = await params
+    const formId = id;
     const body = await request.json();
 
     const eventSchema = z.object({

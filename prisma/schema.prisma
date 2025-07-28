@@ -46,6 +46,7 @@ model Tenant {
   payments          Payment[]
   auditLogs         AuditLog[]
   scheduledReports  ScheduledReport[]
+  plugins           Plugin[]
 
   @@map("tenants")
 }
@@ -872,14 +873,34 @@ model ApiKey {
   lastUsedAt        DateTime?
   expiresAt         DateTime?
   isActive          Boolean     @default(true)
+  userId            String?
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
   tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   tenantId          String
+  
+  // Relationships
+  usage             ApiKeyUsage[]
 
   @@index([tenantId])
   @@index([keyHash])
   @@map("api_keys")
+}
+
+model ApiKeyUsage {
+  id                String      @id @default(cuid())
+  apiKey            ApiKey      @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  apiKeyId          String
+  endpoint          String
+  method            String
+  statusCode        Int
+  responseTime      Int
+  timestamp         DateTime    @default(now())
+
+  @@index([apiKeyId])
+  @@index([timestamp])
+  @@index([endpoint])
+  @@map("api_key_usage")
 }
 
 model Webhook {
@@ -974,4 +995,49 @@ model ScheduledReport {
   @@index([isActive])
   @@index([nextRunAt])
   @@map("scheduled_reports")
+}
+
+// Plugin System
+model Plugin {
+  id                String      @id @default(cuid())
+  pluginId          String      // Plugin identifier from manifest
+  name              String
+  version           String
+  description       String
+  author            String
+  category          PluginCategory
+  status            PluginStatus @default(ACTIVE)
+  config            Json        // Plugin configuration and settings
+  hooks             Json        // Array of plugin hooks
+  permissions       Json        // Array of required permissions
+  dependencies      Json        // Array of plugin dependencies
+  metadata          Json?       // Additional plugin metadata
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenantId          String
+
+  @@unique([pluginId, tenantId])
+  @@index([tenantId])
+  @@index([category])
+  @@index([status])
+  @@map("plugins")
+}
+
+enum PluginCategory {
+  AI
+  ANALYTICS
+  AUTOMATION
+  INTEGRATION
+  EMAIL_PROVIDER
+  PAYMENT
+  STORAGE
+  UTILITY
+}
+
+enum PluginStatus {
+  ACTIVE
+  INACTIVE
+  ERROR
+  UPDATING
 }
