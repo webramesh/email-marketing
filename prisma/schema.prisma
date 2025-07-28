@@ -65,6 +65,10 @@ model User {
   updatedAt         DateTime    @updatedAt
   tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   tenantId          String
+  
+  // Support ticket relationships
+  assignedTickets   SupportTicket[] @relation("AssignedTickets")
+  requestedTickets  SupportTicket[] @relation("RequestedTickets")
 
   @@unique([email, tenantId])
   @@index([tenantId])
@@ -421,16 +425,57 @@ model FormAnalytics {
 
 model SupportTicket {
   id                String      @id @default(cuid())
+  ticketNumber      String      @unique
   subject           String
   description       String      @db.LongText
   status            TicketStatus @default(OPEN)
   priority          TicketPriority @default(MEDIUM)
+  category          TicketCategory @default(GENERAL)
+  language          String      @default("en")
+  
+  // Assignment and routing
+  assignedToUserId  String?
+  assignedToUser    User?       @relation("AssignedTickets", fields: [assignedToUserId], references: [id], onDelete: SetNull)
+  assignedCompany   String?     // Company assignment for routing
+  
+  // Requester information
+  requesterEmail    String
+  requesterName     String?
+  requesterUserId   String?
+  requesterUser     User?       @relation("RequestedTickets", fields: [requesterUserId], references: [id], onDelete: SetNull)
+  
+  // SLA and escalation
+  slaLevel          SlaLevel    @default(STANDARD)
+  dueDate           DateTime?
+  firstResponseAt   DateTime?
+  resolvedAt        DateTime?
+  closedAt          DateTime?
+  escalatedAt       DateTime?
+  escalationLevel   Int         @default(0)
+  
+  // Metadata
+  tags              Json?       // Array of tags
+  customFields      Json?       // Additional custom fields
+  source            TicketSource @default(WEB)
+  
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
   tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   tenantId          String
+  
+  // Relationships
+  comments          TicketComment[]
+  attachments       TicketAttachment[]
+  escalations       TicketEscalation[]
+  slaEvents         TicketSlaEvent[]
 
   @@index([tenantId])
+  @@index([status])
+  @@index([priority])
+  @@index([assignedToUserId])
+  @@index([assignedCompany])
+  @@index([dueDate])
+  @@index([ticketNumber])
   @@map("support_tickets")
 }
 
@@ -446,6 +491,31 @@ enum TicketPriority {
   MEDIUM
   HIGH
   URGENT
+}
+
+enum TicketCategory {
+  GENERAL
+  TECHNICAL
+  BILLING
+  FEATURE_REQUEST
+  BUG_REPORT
+  ACCOUNT
+  INTEGRATION
+}
+
+enum SlaLevel {
+  BASIC
+  STANDARD
+  PREMIUM
+  ENTERPRISE
+}
+
+enum TicketSource {
+  WEB
+  EMAIL
+  API
+  PHONE
+  CHAT
 }
 
 model SubscriptionPlan {
@@ -1040,4 +1110,135 @@ enum PluginStatus {
   INACTIVE
   ERROR
   UPDATING
+}
+// Support Ticket Comments
+model TicketComment {
+  id                String      @id @default(cuid())
+  ticket            SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId          String
+  content           String      @db.LongText
+  isInternal        Boolean     @default(false)
+  authorId          String?
+  authorName        String?
+  authorEmail       String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([ticketId])
+  @@index([createdAt])
+  @@map("ticket_comments")
+}
+
+// Support Ticket Attachments
+model TicketAttachment {
+  id                String      @id @default(cuid())
+  ticket            SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId          String
+  fileName          String
+  originalName      String
+  fileSize          Int
+  mimeType          String
+  filePath          String
+  uploadedBy        String?
+  createdAt         DateTime    @default(now())
+
+  @@index([ticketId])
+  @@map("ticket_attachments")
+}
+
+// Support Ticket Escalations
+model TicketEscalation {
+  id                String      @id @default(cuid())
+  ticket            SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId          String
+  fromLevel         Int
+  toLevel           Int
+  reason            String
+  escalatedBy       String?
+  escalatedAt       DateTime    @default(now())
+  resolvedAt        DateTime?
+
+  @@index([ticketId])
+  @@index([escalatedAt])
+  @@map("ticket_escalations")
+}
+
+// Support Ticket SLA Events
+model TicketSlaEvent {
+  id                String      @id @default(cuid())
+  ticket            SupportTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+  ticketId          String
+  eventType         SlaEventType
+  targetTime        DateTime
+  actualTime        DateTime?
+  isBreached        Boolean     @default(false)
+  breachDuration    Int?        // Minutes
+  createdAt         DateTime    @default(now())
+
+  @@index([ticketId])
+  @@index([eventType])
+  @@index([isBreached])
+  @@map("ticket_sla_events")
+}
+
+enum SlaEventType {
+  FIRST_RESPONSE
+  RESOLUTION
+  ESCALATION
+}
+
+// Support Agent Workload
+model SupportAgentWorkload {
+  id                String      @id @default(cuid())
+  userId            String
+  tenantId          String
+  activeTickets     Int         @default(0)
+  totalTickets      Int         @default(0)
+  avgResponseTime   Float       @default(0) // Minutes
+  avgResolutionTime Float       @default(0) // Minutes
+  workloadScore     Float       @default(0) // Calculated workload score
+  lastUpdated       DateTime    @default(now())
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+  @@index([workloadScore])
+  @@map("support_agent_workloads")
+}
+
+// Support SLA Configuration
+model SupportSlaConfig {
+  id                String      @id @default(cuid())
+  tenantId          String
+  slaLevel          SlaLevel
+  priority          TicketPriority
+  firstResponseTime Int         // Minutes
+  resolutionTime    Int         // Minutes
+  escalationTime    Int         // Minutes
+  businessHoursOnly Boolean     @default(false)
+  businessHours     Json?       // Business hours configuration
+  isActive          Boolean     @default(true)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@unique([tenantId, slaLevel, priority])
+  @@index([tenantId])
+  @@map("support_sla_configs")
+}
+
+// Support Company Assignment Rules
+model SupportCompanyRule {
+  id                String      @id @default(cuid())
+  tenantId          String
+  companyName       String
+  routingRules      Json        // Routing conditions and rules
+  assignedAgents    Json        // Array of user IDs
+  priority          Int         @default(1)
+  isActive          Boolean     @default(true)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@unique([tenantId, companyName])
+  @@index([tenantId])
+  @@index([companyName])
+  @@map("support_company_rules")
 }
