@@ -47,6 +47,19 @@ async function main() {
     },
   });
 
+  // Create main tenant for superadmin
+  const mainTenant = await prisma.tenant.upsert({
+    where: { subdomain: 'main' },
+    update: {},
+    create: {
+      id: 'main-tenant',
+      name: 'Main Platform',
+      subdomain: 'main',
+      customDomain: null,
+      subscriptionPlanId: proPlan.id,
+    },
+  });
+
   // Create demo tenant
   const demoTenant = await prisma.tenant.upsert({
     where: { subdomain: 'demo' },
@@ -57,6 +70,46 @@ async function main() {
       subdomain: 'demo',
       customDomain: null,
       subscriptionPlanId: basicPlan.id,
+    },
+  });
+
+  // Create superadmin user for main tenant
+  const superadminPassword = await hash('superadmin123', 12);
+  const superadminUser = await prisma.user.upsert({
+    where: {
+      email_tenantId: {
+        email: 'superadmin@platform.com',
+        tenantId: mainTenant.id,
+      },
+    },
+    update: {},
+    create: {
+      email: 'superadmin@platform.com',
+      name: 'Super Administrator',
+      password: superadminPassword,
+      role: UserRole.ADMIN,
+      mfaEnabled: false,
+      tenantId: mainTenant.id,
+    },
+  });
+
+  // Create regular user for demo tenant
+  const userPassword = await hash('user123', 12);
+  const regularUser = await prisma.user.upsert({
+    where: {
+      email_tenantId: {
+        email: 'user@demo.com',
+        tenantId: demoTenant.id,
+      },
+    },
+    update: {},
+    create: {
+      email: 'user@demo.com',
+      name: 'Regular User',
+      password: userPassword,
+      role: UserRole.USER,
+      mfaEnabled: false,
+      tenantId: demoTenant.id,
     },
   });
 

@@ -1242,3 +1242,136 @@ model SupportCompanyRule {
   @@index([companyName])
   @@map("support_company_rules")
 }
+
+// GDPR Compliance Models
+
+// Consent Records
+model ConsentRecord {
+  id                String      @id @default(cuid())
+  tenantId          String
+  subscriberId      String?
+  email             String
+  consentType       ConsentType
+  status            ConsentStatus @default(GIVEN)
+  purpose           Json        // Array of DataProcessingPurpose
+  legalBasis        String
+  consentDate       DateTime    @default(now())
+  withdrawalDate    DateTime?
+  expiryDate        DateTime?
+  ipAddress         String?
+  userAgent         String?
+  consentMethod     String      // 'form', 'email', 'api', etc.
+  consentText       String      @db.LongText
+  version           String
+  metadata          Json?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([tenantId])
+  @@index([email])
+  @@index([consentType])
+  @@index([status])
+  @@index([subscriberId])
+  @@map("consent_records")
+}
+
+enum ConsentType {
+  MARKETING_EMAILS
+  ANALYTICS_TRACKING
+  THIRD_PARTY_SHARING
+  PROFILING
+  AUTOMATED_DECISION_MAKING
+}
+
+enum ConsentStatus {
+  GIVEN
+  WITHDRAWN
+  PENDING
+  EXPIRED
+}
+
+// GDPR Requests
+model GdprRequest {
+  id                String      @id @default(cuid())
+  tenantId          String
+  requestType       GdprRequestType
+  status            GdprRequestStatus @default(PENDING)
+  email             String
+  firstName         String?
+  lastName          String?
+  requestDate       DateTime    @default(now())
+  completionDate    DateTime?
+  verificationToken String
+  verificationExpiry DateTime
+  isVerified        Boolean     @default(false)
+  requestDetails    Json?
+  responseData      Json?
+  rejectionReason   String?
+  metadata          Json?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([tenantId])
+  @@index([email])
+  @@index([requestType])
+  @@index([status])
+  @@index([verificationToken])
+  @@map("gdpr_requests")
+}
+
+enum GdprRequestType {
+  ACCESS
+  RECTIFICATION
+  ERASURE
+  PORTABILITY
+  RESTRICTION
+  OBJECTION
+}
+
+enum GdprRequestStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  REJECTED
+  EXPIRED
+}
+
+// Data Processing Activities (for compliance documentation)
+model DataProcessingActivity {
+  id                String      @id @default(cuid())
+  tenantId          String
+  activityName      String
+  purpose           Json        // Array of DataProcessingPurpose
+  legalBasis        String
+  dataCategories    Json        // Array of data categories
+  dataSubjects      Json        // Array of data subject categories
+  recipients        Json?       // Array of data recipients
+  thirdCountries    Json?       // Array of third countries
+  retentionPeriod   String
+  securityMeasures  Json        // Array of security measures
+  isActive          Boolean     @default(true)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([tenantId])
+  @@index([isActive])
+  @@map("data_processing_activities")
+}
+
+// Privacy Policy Versions
+model PrivacyPolicy {
+  id                String      @id @default(cuid())
+  tenantId          String
+  version           String
+  content           String      @db.LongText
+  effectiveDate     DateTime
+  isActive          Boolean     @default(false)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@unique([tenantId, version])
+  @@index([tenantId])
+  @@index([isActive])
+  @@index([effectiveDate])
+  @@map("privacy_policies")
+}
