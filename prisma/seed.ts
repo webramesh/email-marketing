@@ -267,10 +267,20 @@ async function main() {
   });
 
   console.log('✅ Database seeding completed successfully!');
-  console.log(`📊 Created tenant: ${demoTenant.name} (${demoTenant.subdomain})`);
-  console.log(`👤 Created admin user: ${adminUser.email}`);
-  console.log(`� CCreated MFA test user: ${mfaUser.email}`);
+  console.log('');
+  console.log('🏢 Created tenants:');
+  console.log(`   • ${mainTenant.name} (${mainTenant.subdomain}) - Pro Plan`);
+  console.log(`   • ${demoTenant.name} (${demoTenant.subdomain}) - Basic Plan`);
+  console.log('');
+  console.log('👥 Created users:');
+  console.log(`   🔑 Superadmin: ${superadminUser.email} (password: superadmin123)`);
+  console.log(`   👤 Regular User: ${regularUser.email} (password: user123)`);
+  console.log(`   🛡️  Demo Admin: ${adminUser.email} (password: admin123)`);
+  console.log(`   🔐 MFA Test User: ${mfaUser.email} (password: admin123)`);
+  console.log('');
   console.log(`📧 Created ${sampleSubscribers.length} sample subscribers`);
+  console.log('');
+  console.log('🚀 You can now login with any of the above accounts!');
 }
 
 main()
