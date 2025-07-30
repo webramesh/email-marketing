@@ -8,17 +8,9 @@ const addCommentSchema = z.object({
   isInternal: z.boolean().optional().default(false),
 });
 
-interface RouteParams {
-  params: {
-    id: string;
-  };
-}
-
-export async function POST(
-  request: NextRequest,
-  { params }: RouteParams
-) {
+export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
+    const params = await context.params;
     const session = await auth();
     if (!session?.user?.tenantId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
@@ -27,22 +19,18 @@ export async function POST(
     const body = await request.json();
     const { content, isInternal } = addCommentSchema.parse(body);
 
-    const comment = await supportTicketService.addComment(
-      session.user.tenantId,
-      params.id,
-      {
-        content,
-        isInternal,
-        authorId: session.user.id,
-        authorName: session.user.name || undefined,
-        authorEmail: session.user.email,
-      }
-    );
+    const comment = await supportTicketService.addComment(session.user.tenantId, params.id, {
+      content,
+      isInternal,
+      authorId: session.user.id,
+      authorName: session.user.name || undefined,
+      authorEmail: session.user.email || undefined,
+    });
 
     return NextResponse.json(comment, { status: 201 });
   } catch (error) {
     console.error('Error adding comment to support ticket:', error);
-    
+
     if (error instanceof z.ZodError) {
       return NextResponse.json(
         { error: 'Validation error', details: error.issues },
@@ -54,9 +42,6 @@ export async function POST(
       return NextResponse.json({ error: 'Ticket not found' }, { status: 404 });
     }
 
-    return NextResponse.json(
-      { error: 'Failed to add comment' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Failed to add comment' }, { status: 500 });
   }
 }

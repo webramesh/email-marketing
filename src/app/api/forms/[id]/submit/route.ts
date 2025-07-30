@@ -18,9 +18,10 @@ const submitFormSchema = z.object({
  */
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const params = await context.params;
     const formId = params.id;
     const body = await request.json();
     

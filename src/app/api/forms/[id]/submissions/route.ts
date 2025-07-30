@@ -5,8 +5,9 @@ import { FormService } from '@/services/form.service';
 /**
  * GET /api/forms/[id]/submissions - Get form submissions
  */
-export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
+export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
   try {
+    const params = await context.params;
     const session = await auth();
     if (!session?.user?.tenantId) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });

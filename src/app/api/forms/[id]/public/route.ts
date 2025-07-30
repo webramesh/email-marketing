@@ -7,9 +7,10 @@ import { FormService } from '@/services/form.service';
  */
 export async function GET(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  context: { params: Promise<{ id: string }> }
 ) {
   try {
+    const params = await context.params;
     const formId = params.id;
 
     // Get form data without tenant authentication (public endpoint)

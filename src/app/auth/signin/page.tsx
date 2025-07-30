@@ -91,8 +91,11 @@ export default function SignInPage() {
               value={tenantId}
               onChange={(e) => setTenantId(e.target.value)}
               required
-              placeholder="Enter your tenant ID"
+              placeholder="e.g., main-tenant, demo-tenant"
             />
+            <p className="text-xs text-gray-500 mt-1">
+              Your organization's unique identifier
+            </p>
           </div>
 
           {error && (
@@ -110,13 +113,39 @@ export default function SignInPage() {
           </Button>
         </form>
 
-        <div className="mt-6 text-center">
-          <p className="text-sm text-gray-600">
-            Don't have an account?{" "}
-            <a href="/auth/signup" className="text-blue-600 hover:text-blue-500">
-              Sign up
-            </a>
-          </p>
+        <div className="mt-6 border-t pt-6">
+          <div className="text-center mb-4">
+            <h3 className="text-sm font-medium text-gray-700 mb-3">Test Accounts</h3>
+            <div className="space-y-2 text-xs text-gray-600">
+              <div className="bg-gray-50 p-2 rounded">
+                <strong>Superadmin:</strong><br />
+                Email: superadmin@platform.com<br />
+                Password: superadmin123<br />
+                Tenant ID: main-tenant
+              </div>
+              <div className="bg-gray-50 p-2 rounded">
+                <strong>Regular User:</strong><br />
+                Email: user@demo.com<br />
+                Password: user123<br />
+                Tenant ID: demo-tenant
+              </div>
+              <div className="bg-gray-50 p-2 rounded">
+                <strong>Demo Admin:</strong><br />
+                Email: admin@demo.com<br />
+                Password: admin123<br />
+                Tenant ID: demo-tenant
+              </div>
+            </div>
+          </div>
+          
+          <div className="text-center">
+            <p className="text-sm text-gray-600">
+              Don't have an account?{" "}
+              <a href="/auth/signup" className="text-blue-600 hover:text-blue-500">
+                Sign up
+              </a>
+            </p>
+          </div>
         </div>
       </Card>
     </div>

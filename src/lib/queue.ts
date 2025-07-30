@@ -1,10 +1,14 @@
+// Ensure this module only runs on the server
+if (typeof window !== 'undefined') {
+  throw new Error('Queue module should only be imported on the server side');
+}
+
 import Bull from 'bull';
 import Redis from 'ioredis';
 
 // Check if we're in a build environment
 const isBuildTime =
   process.env.NODE_ENV === 'test' ||
-  typeof window !== 'undefined' ||
   process.env.NEXT_PHASE === 'phase-production-build' ||
   process.argv.includes('build');
 

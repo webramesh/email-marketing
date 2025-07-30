@@ -10,7 +10,8 @@ const duplicateFormSchema = z.object({
 /**
  * POST /api/forms/[id]/duplicate - Duplicate a form
  */
-export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
+export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   try {
     const session = await auth();
     if (!session?.user?.tenantId) {
