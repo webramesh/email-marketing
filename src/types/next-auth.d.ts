@@ -11,7 +11,14 @@ declare module "next-auth" {
         id: string
         name: string
         subdomain: string
+        customDomain?: string
       }
+      availableTenants?: Array<{
+        id: string
+        name: string
+        subdomain: string
+        customDomain?: string
+      }>
     } & DefaultSession["user"]
   }
 
@@ -22,7 +29,14 @@ declare module "next-auth" {
       id: string
       name: string
       subdomain: string
+      customDomain?: string
     }
+    availableTenants?: Array<{
+      id: string
+      name: string
+      subdomain: string
+      customDomain?: string
+    }>
   }
 }
 
@@ -34,6 +48,13 @@ declare module "next-auth/jwt" {
       id: string
       name: string
       subdomain: string
+      customDomain?: string
     }
+    availableTenants?: Array<{
+      id: string
+      name: string
+      subdomain: string
+      customDomain?: string
+    }>
   }
 }

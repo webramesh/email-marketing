@@ -1,6 +1,10 @@
-// Jest setup file for database tests
+// Jest setup file for React component tests
+import '@testing-library/jest-dom';
+
 // Set test environment variables
-process.env.NODE_ENV = 'test';
+if (!process.env.NODE_ENV) {
+  process.env.NODE_ENV = 'test';
+}
 process.env.DATABASE_URL = process.env.DATABASE_URL || 'mysql://root:password@localhost:3306/email_marketing_test';
 
 // Global test timeout

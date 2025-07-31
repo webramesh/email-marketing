@@ -8,6 +8,7 @@ import { signOut } from 'next-auth/react';
 import { Avatar } from '../ui/Avatar';
 import { Badge } from '../ui/Badge';
 import { Dropdown } from '../ui/Dropdown';
+import { TenantSwitcher as AuthTenantSwitcher } from '../auth/TenantSwitcher';
 
 export interface DashboardLayoutProps {
   /**
@@ -325,22 +326,9 @@ function NotificationButton() {
  * Tenant switcher component
  */
 function TenantSwitcher() {
-  const tenants = [
-    { label: 'Acme Inc', value: 'acme' },
-    { label: 'Globex Corp', value: 'globex' },
-    { label: 'Stark Industries', value: 'stark' },
-  ];
-  
-  const [selectedTenant, setSelectedTenant] = useState('acme');
-  
   return (
     <div className="hidden md:block">
-      <Dropdown
-        items={tenants}
-        value={selectedTenant}
-        onChange={setSelectedTenant}
-        className="w-48"
-      />
+      <AuthTenantSwitcher />
     </div>
   );
 }

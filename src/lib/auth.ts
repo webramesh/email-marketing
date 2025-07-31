@@ -1,11 +1,8 @@
 import NextAuth from "next-auth"
 import CredentialsProvider from "next-auth/providers/credentials"
-import bcrypt from "bcryptjs"
-import { PrismaClient } from "@/generated/prisma"
+import { UserService } from "@/services/user.service"
 import type { JWT } from "next-auth/jwt"
 import type { Session } from "next-auth"
-
-const prisma = new PrismaClient()
 
 export const authOptions = {
   providers: [
@@ -14,7 +11,7 @@ export const authOptions = {
       credentials: {
         email: { label: "Email", type: "email" },
         password: { label: "Password", type: "password" },
-        tenantId: { label: "Tenant ID", type: "text" }
+        tenantId: { label: "Tenant ID", type: "text", optional: true }
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) {
@@ -23,32 +20,21 @@ export const authOptions = {
 
         const email = credentials.email as string
         const password = credentials.password as string
-        const tenantId = (credentials.tenantId as string) || ""
+        const tenantId = credentials.tenantId as string | undefined
 
         try {
-          // Find user by email and tenantId
-          const user = await prisma.user.findUnique({
-            where: {
-              email_tenantId: {
-                email: email,
-                tenantId: tenantId
-              }
-            },
-            include: {
-              tenant: true
-            }
-          })
+          // Use the new UserService for enhanced authentication
+          const authResult = await UserService.validateCredentials(email, password, tenantId)
 
-          if (!user) {
+          if (!authResult.isValid || !authResult.user) {
+            console.log("Authentication failed:", authResult.error)
             return null
           }
 
-          // Verify password
-          const isPasswordValid = bcrypt.compareSync(password, user.password)
+          const user = authResult.user
 
-          if (!isPasswordValid) {
-            return null
-          }
+          // Update last login timestamp
+          await UserService.updateLastLogin(user.id)
 
           return {
             id: user.id,
@@ -59,8 +45,10 @@ export const authOptions = {
             tenant: {
               id: user.tenant.id,
               name: user.tenant.name,
-              subdomain: user.tenant.subdomain
-            }
+              subdomain: user.tenant.subdomain,
+              customDomain: user.tenant.customDomain
+            },
+            availableTenants: authResult.availableTenants
           }
         } catch (error) {
           console.error("Authentication error:", error)
@@ -78,6 +66,7 @@ export const authOptions = {
         token.role = user.role
         token.tenantId = user.tenantId
         token.tenant = user.tenant
+        token.availableTenants = user.availableTenants
       }
       return token
     },
@@ -87,6 +76,7 @@ export const authOptions = {
         session.user.role = token.role as string
         session.user.tenantId = token.tenantId as string
         session.user.tenant = token.tenant as any
+        session.user.availableTenants = token.availableTenants as any
       }
       return session
     }
