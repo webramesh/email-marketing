@@ -39,6 +39,7 @@
     "@types/papaparse": "^5.3.16",
     "@types/qrcode": "^1.5.5",
     "@types/redis": "^4.0.10",
+    "@types/ua-parser-js": "^0.7.39",
     "axios": "^1.10.0",
     "bcryptjs": "^3.0.2",
     "braintree": "^3.32.0",
@@ -68,6 +69,7 @@
     "stripe": "^18.3.0",
     "swagger-jsdoc": "^6.2.8",
     "tailwind-merge": "^3.3.1",
+    "ua-parser-js": "^2.0.4",
     "validator": "^13.15.15",
     "zod": "^4.0.5"
   },

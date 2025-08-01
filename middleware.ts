@@ -4,6 +4,7 @@ import { enforceMFA, mfaPageMiddleware } from "@/lib/mfa-middleware"
 import { rbacPageMiddleware } from "@/lib/rbac/authorization"
 import { Resource, Action } from "@/lib/rbac/permissions"
 import { tenantMiddleware, middlewareConfigs } from "@/lib/tenant/middleware"
+import { enhancedSessionMiddleware } from "@/lib/enhanced-session-middleware"
 
 // Define resource paths for RBAC enforcement
 const resourcePathMap = {
@@ -135,6 +136,12 @@ export default async function middleware(request: NextRequest) {
     return NextResponse.next()
   }
   
+  // Apply enhanced session management
+  const sessionResponse = await enhancedSessionMiddleware(request)
+  if (sessionResponse) {
+    return sessionResponse
+  }
+
   // Enforce MFA for sensitive API operations
   if (pathname.startsWith("/api/")) {
     const mfaResponse = await enforceMFA(request)

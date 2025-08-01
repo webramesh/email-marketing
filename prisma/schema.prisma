@@ -61,6 +61,14 @@ model User {
   mfaSecret         String?
   mfaBackupCodes    Json?
   mfaLastVerified   DateTime?
+  
+  // Session management fields
+  lastLoginAt       DateTime?
+  lastActivityAt    DateTime?
+  sessionTimeout    Int         @default(86400) // 24 hours in seconds
+  maxConcurrentSessions Int     @default(5)
+  rememberMeEnabled Boolean     @default(false)
+  
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
   tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -69,6 +77,11 @@ model User {
   // Support ticket relationships
   assignedTickets   SupportTicket[] @relation("AssignedTickets")
   requestedTickets  SupportTicket[] @relation("RequestedTickets")
+  
+  // Session relationships
+  userSessions      UserSession[]
+  sessionActivities SessionActivity[]
+  rememberTokens    RememberToken[]
 
   @@unique([email, tenantId])
   @@index([tenantId])
@@ -80,6 +93,133 @@ enum UserRole {
   ADMIN
   USER
   SUPPORT
+}
+
+// Enhanced Session Management Models
+model UserSession {
+  id                String      @id @default(cuid())
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId            String
+  sessionToken      String      @unique
+  deviceId          String?
+  deviceName        String?
+  deviceType        String?     // mobile, desktop, tablet
+  browser           String?
+  browserVersion    String?
+  os                String?
+  osVersion         String?
+  ipAddress         String
+  location          Json?       // GeoIP data
+  userAgent         String?
+  isActive          Boolean     @default(true)
+  lastActivityAt    DateTime    @default(now())
+  expiresAt         DateTime
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  
+  // Session activities
+  activities        SessionActivity[]
+
+  @@index([userId])
+  @@index([sessionToken])
+  @@index([isActive])
+  @@index([expiresAt])
+  @@index([lastActivityAt])
+  @@map("user_sessions")
+}
+
+model SessionActivity {
+  id                String      @id @default(cuid())
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId            String
+  session           UserSession? @relation(fields: [sessionId], references: [id], onDelete: SetNull)
+  sessionId         String?
+  action            String      // login, logout, page_view, api_call, etc.
+  resource          String?     // resource accessed
+  ipAddress         String
+  userAgent         String?
+  location          Json?       // GeoIP data
+  metadata          Json?       // additional context
+  riskScore         Float?      // calculated risk score
+  isBlocked         Boolean     @default(false)
+  blockReason       String?
+  createdAt         DateTime    @default(now())
+
+  @@index([userId])
+  @@index([sessionId])
+  @@index([action])
+  @@index([createdAt])
+  @@index([riskScore])
+  @@index([isBlocked])
+  @@map("session_activities")
+}
+
+model RememberToken {
+  id                String      @id @default(cuid())
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId            String
+  tokenHash         String      @unique
+  deviceId          String?
+  deviceFingerprint String?
+  ipAddress         String
+  userAgent         String?
+  isActive          Boolean     @default(true)
+  lastUsedAt        DateTime    @default(now())
+  expiresAt         DateTime
+  createdAt         DateTime    @default(now())
+
+  @@index([userId])
+  @@index([tokenHash])
+  @@index([isActive])
+  @@index([expiresAt])
+  @@map("remember_tokens")
+}
+
+model SecurityEvent {
+  id                String      @id @default(cuid())
+  userId            String?
+  tenantId          String?
+  eventType         SecurityEventType
+  severity          SecuritySeverity @default(LOW)
+  description       String
+  ipAddress         String?
+  userAgent         String?
+  location          Json?
+  metadata          Json?
+  isResolved        Boolean     @default(false)
+  resolvedAt        DateTime?
+  resolvedBy        String?
+  createdAt         DateTime    @default(now())
+
+  @@index([userId])
+  @@index([tenantId])
+  @@index([eventType])
+  @@index([severity])
+  @@index([createdAt])
+  @@index([isResolved])
+  @@map("security_events")
+}
+
+enum SecurityEventType {
+  FAILED_LOGIN
+  SUSPICIOUS_LOGIN
+  MULTIPLE_FAILED_ATTEMPTS
+  UNUSUAL_LOCATION
+  CONCURRENT_SESSION_LIMIT
+  SESSION_HIJACK_ATTEMPT
+  BRUTE_FORCE_ATTEMPT
+  ACCOUNT_LOCKOUT
+  PASSWORD_RESET_REQUEST
+  MFA_BYPASS_ATTEMPT
+  PRIVILEGE_ESCALATION
+  UNAUTHORIZED_ACCESS
+}
+
+enum SecuritySeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
 }
 
 // Basic models for email marketing
