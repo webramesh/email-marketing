@@ -209,6 +209,63 @@ export function withAdmin<T extends any[]>(
 }
 
 /**
+ * Middleware to enforce superadmin-only access
+ * @param _request The Next.js request object (unused but kept for middleware signature)
+ * @returns NextResponse or null to continue
+ */
+export async function enforceSuperAdmin(_request: NextRequest): Promise<NextResponse | null> {
+  try {
+    const session = await auth()
+    
+    if (!session?.user) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401 }
+      )
+    }
+    
+    const { user } = session
+    const userRole = user.role as UserRole
+    
+    if (userRole !== UserRole.SUPERADMIN) {
+      return NextResponse.json(
+        { 
+          error: 'Forbidden',
+          message: 'This action requires superadmin privileges'
+        },
+        { status: 403 }
+      )
+    }
+    
+    return null // Continue with the request
+  } catch (error) {
+    console.error('Superadmin enforcement error:', error)
+    return NextResponse.json(
+      { error: 'Internal server error' },
+      { status: 500 }
+    )
+  }
+}
+
+/**
+ * API route wrapper that enforces superadmin-only access
+ * @param handler The API route handler
+ * @returns A wrapped handler function with superadmin enforcement
+ */
+export function withSuperAdmin<T extends any[]>(
+  handler: (request: NextRequest, ...args: T) => Promise<NextResponse>
+) {
+  return async (request: NextRequest, ...args: T): Promise<NextResponse> => {
+    const superAdminResponse = await enforceSuperAdmin(request)
+    if (superAdminResponse) {
+      return superAdminResponse
+    }
+    
+    return handler(request, ...args)
+  }
+}
+
+/**
  * Next.js middleware function to enforce role-based access for frontend routes
  * This can be used in middleware.ts to protect frontend routes
  * @param request The Next.js request object

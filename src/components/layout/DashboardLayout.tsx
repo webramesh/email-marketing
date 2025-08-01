@@ -4,11 +4,12 @@ import React, { useState } from 'react';
 import { cn } from '@/lib/utils';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { signOut } from 'next-auth/react';
+import { signOut, useSession } from 'next-auth/react';
 import { Avatar } from '../ui/Avatar';
 import { Badge } from '../ui/Badge';
 import { Dropdown } from '../ui/Dropdown';
 import { TenantSwitcher as AuthTenantSwitcher } from '../auth/TenantSwitcher';
+import { UserRole } from '@/types';
 
 export interface DashboardLayoutProps {
   /**
@@ -198,6 +199,9 @@ function Sidebar() {
           </Link>
         ))}
       </div>
+
+      {/* Superadmin Section */}
+      <SuperAdminSection pathname={pathname} />
       
       <div className="pt-6">
         <div className="px-3 text-xs font-semibold text-secondary-500 uppercase tracking-wider">
@@ -205,17 +209,20 @@ function Sidebar() {
         </div>
         <div className="mt-2 space-y-1">
           <Link
-            href="/support"
-            className="group flex items-center px-3 py-2 text-sm font-medium rounded-md text-secondary-700 hover:bg-secondary-50 hover:text-secondary-900"
+            href="/dashboard/support"
+            className={cn(
+              'group flex items-center px-3 py-2 text-sm font-medium rounded-md',
+              pathname === '/dashboard/support' || pathname?.startsWith('/dashboard/support/')
+                ? 'bg-primary-50 text-primary-700'
+                : 'text-secondary-700 hover:bg-secondary-50 hover:text-secondary-900'
+            )}
           >
-            <SupportIcon className="mr-3 h-5 w-5 flex-shrink-0 text-secondary-400 group-hover:text-secondary-500" />
-            Help Center
-          </Link>
-          <Link
-            href="/tickets"
-            className="group flex items-center px-3 py-2 text-sm font-medium rounded-md text-secondary-700 hover:bg-secondary-50 hover:text-secondary-900"
-          >
-            <TicketIcon className="mr-3 h-5 w-5 flex-shrink-0 text-secondary-400 group-hover:text-secondary-500" />
+            <SupportIcon className={cn(
+              'mr-3 h-5 w-5 flex-shrink-0',
+              pathname === '/dashboard/support' || pathname?.startsWith('/dashboard/support/')
+                ? 'text-primary-500'
+                : 'text-secondary-400 group-hover:text-secondary-500'
+            )} />
             Support Tickets
           </Link>
         </div>
@@ -596,5 +603,63 @@ function ServerIcon(props: React.SVGProps<SVGSVGElement>) {
         d="M21.75 17.25v-.228a4.5 4.5 0 00-.12-1.03l-2.268-9.64a3.375 3.375 0 00-3.285-2.602H7.923a3.375 3.375 0 00-3.285 2.602l-2.268 9.64a4.5 4.5 0 00-.12 1.03v.228m19.5 0a3 3 0 01-3 3H5.25a3 3 0 01-3-3m19.5 0a3 3 0 00-3-3H5.25a3 3 0 00-3 3m16.5 0h.008v.008h-.008v-.008zm-3 0h.008v.008h-.008v-.008z"
       />
     </svg>
+  );
+}
+
+function SuperAdminIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      {...props}
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth="1.5"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"
+      />
+    </svg>
+  );
+}
+
+/**
+ * Superadmin section component - only visible to superadmins
+ */
+function SuperAdminSection({ pathname }: { pathname: string }) {
+  const { data: session } = useSession();
+  
+  // Only show for superadmins
+  if (!session?.user || session.user.role !== UserRole.SUPERADMIN) {
+    return null;
+  }
+
+  return (
+    <div className="pt-6">
+      <div className="px-3 text-xs font-semibold text-red-500 uppercase tracking-wider flex items-center">
+        <span className="mr-1">🔒</span>
+        Superadmin
+      </div>
+      <div className="mt-2 space-y-1">
+        <Link
+          href="/dashboard/superadmin"
+          className={cn(
+            'group flex items-center px-3 py-2 text-sm font-medium rounded-md',
+            pathname === '/dashboard/superadmin' || pathname?.startsWith('/dashboard/superadmin/')
+              ? 'bg-red-50 text-red-700 border border-red-200'
+              : 'text-secondary-700 hover:bg-red-50 hover:text-red-700 border border-transparent hover:border-red-200'
+          )}
+        >
+          <SuperAdminIcon className={cn(
+            'mr-3 h-5 w-5 flex-shrink-0',
+            pathname === '/dashboard/superadmin' || pathname?.startsWith('/dashboard/superadmin/')
+              ? 'text-red-500'
+              : 'text-secondary-400 group-hover:text-red-500'
+          )} />
+          Platform Control
+        </Link>
+      </div>
+    </div>
   );
 }

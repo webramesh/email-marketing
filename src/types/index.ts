@@ -14,6 +14,7 @@ export interface Tenant {
 
 // User types
 export enum UserRole {
+  SUPERADMIN = 'SUPERADMIN',
   ADMIN = 'ADMIN',
   USER = 'USER',
   SUPPORT = 'SUPPORT',

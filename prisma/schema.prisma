@@ -76,6 +76,7 @@ model User {
 }
 
 enum UserRole {
+  SUPERADMIN
   ADMIN
   USER
   SUPPORT
