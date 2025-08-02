@@ -160,6 +160,7 @@ function Sidebar() {
     { name: 'Lists', href: '/dashboard/lists', icon: ListIcon },
     { name: 'Automations', href: '/dashboard/automations', icon: AutomationIcon },
     { name: 'Forms', href: '/dashboard/forms', icon: FormIcon },
+    { name: 'Packages', href: '/dashboard/packages', icon: PackageIcon },
     { name: 'Sending Servers', href: '/dashboard/sending-servers', icon: ServerIcon },
     { name: 'Analytics', href: '/dashboard/analytics', icon: ChartIcon },
     { name: 'Settings', href: '/dashboard/settings', icon: SettingsIcon },
@@ -200,6 +201,9 @@ function Sidebar() {
         ))}
       </div>
 
+      {/* Admin Section */}
+      <AdminSection pathname={pathname} />
+      
       {/* Superadmin Section */}
       <SuperAdminSection pathname={pathname} />
       
@@ -361,6 +365,10 @@ function UserMenu() {
         callbackUrl: '/',
         redirect: true 
       });
+    } else if (value === 'profile') {
+      window.location.href = '/dashboard/profile';
+    } else if (value === 'settings') {
+      window.location.href = '/dashboard/profile';
     }
   };
   
@@ -606,6 +614,42 @@ function ServerIcon(props: React.SVGProps<SVGSVGElement>) {
   );
 }
 
+function PackageIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      {...props}
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth="1.5"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M20.25 7.5l-.625 10.632a2.25 2.25 0 01-2.247 2.118H6.622a2.25 2.25 0 01-2.247-2.118L3.75 7.5M10 11.25h4M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125z"
+      />
+    </svg>
+  );
+}
+
+function CommissionIcon(props: React.SVGProps<SVGSVGElement>) {
+  return (
+    <svg
+      {...props}
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth="1.5"
+      stroke="currentColor"
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+      />
+    </svg>
+  );
+}
+
 function SuperAdminIcon(props: React.SVGProps<SVGSVGElement>) {
   return (
     <svg
@@ -621,6 +665,46 @@ function SuperAdminIcon(props: React.SVGProps<SVGSVGElement>) {
         d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z"
       />
     </svg>
+  );
+}
+
+/**
+ * Admin section component - only visible to admins
+ */
+function AdminSection({ pathname }: { pathname: string }) {
+  const { data: session } = useSession();
+  
+  // Only show for admins and superadmins
+  if (!session?.user || !['ADMIN', 'SUPERADMIN'].includes(session.user.role)) {
+    return null;
+  }
+
+  return (
+    <div className="pt-6">
+      <div className="px-3 text-xs font-semibold text-blue-500 uppercase tracking-wider flex items-center">
+        <span className="mr-1">💼</span>
+        Admin
+      </div>
+      <div className="mt-2 space-y-1">
+        <Link
+          href="/dashboard/commissions"
+          className={cn(
+            'group flex items-center px-3 py-2 text-sm font-medium rounded-md',
+            pathname === '/dashboard/commissions' || pathname?.startsWith('/dashboard/commissions/')
+              ? 'bg-blue-50 text-blue-700 border border-blue-200'
+              : 'text-secondary-700 hover:bg-blue-50 hover:text-blue-700 border border-transparent hover:border-blue-200'
+          )}
+        >
+          <CommissionIcon className={cn(
+            'mr-3 h-5 w-5 flex-shrink-0',
+            pathname === '/dashboard/commissions' || pathname?.startsWith('/dashboard/commissions/')
+              ? 'text-blue-500'
+              : 'text-secondary-400 group-hover:text-blue-500'
+          )} />
+          Commissions
+        </Link>
+      </div>
+    </div>
   );
 }
 

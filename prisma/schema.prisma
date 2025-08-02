@@ -47,6 +47,12 @@ model Tenant {
   auditLogs         AuditLog[]
   scheduledReports  ScheduledReport[]
   plugins           Plugin[]
+  
+  // Package management relationships
+  createdPackages   Package[]       @relation("PackageCreator")
+  purchasedPackages PackagePurchase[]
+  packageSales      PackageSale[]
+  packageReviews    PackageReview[]
 
   @@map("tenants")
 }
@@ -61,6 +67,28 @@ model User {
   mfaSecret         String?
   mfaBackupCodes    Json?
   mfaLastVerified   DateTime?
+  
+  // Profile fields
+  firstName         String?
+  lastName          String?
+  profilePicture    String?     // URL to profile picture
+  bio               String?     @db.LongText
+  phoneNumber       String?
+  timezone          String?     @default("UTC")
+  language          String?     @default("en")
+  dateFormat        String?     @default("MM/dd/yyyy")
+  timeFormat        String?     @default("12h")
+  
+  // Account status
+  isActive          Boolean     @default(true)
+  deactivatedAt     DateTime?
+  deactivationReason String?
+  reactivatedAt     DateTime?
+  
+  // Notification preferences
+  emailNotifications Json?      @default("{\"campaigns\": true, \"system\": true, \"security\": true}")
+  pushNotifications Boolean     @default(true)
+  smsNotifications  Boolean     @default(false)
   
   // Session management fields
   lastLoginAt       DateTime?
@@ -82,9 +110,13 @@ model User {
   userSessions      UserSession[]
   sessionActivities SessionActivity[]
   rememberTokens    RememberToken[]
+  
+  // Profile relationships
+  profileHistory    UserProfileHistory[]
 
   @@unique([email, tenantId])
   @@index([tenantId])
+  @@index([isActive])
   @@map("users")
 }
 
@@ -173,6 +205,38 @@ model RememberToken {
   @@index([isActive])
   @@index([expiresAt])
   @@map("remember_tokens")
+}
+
+// User Profile History for tracking changes
+model UserProfileHistory {
+  id                String      @id @default(cuid())
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId            String
+  changeType        ProfileChangeType
+  fieldName         String      // Field that was changed
+  oldValue          String?     @db.LongText
+  newValue          String?     @db.LongText
+  changedBy         String?     // User ID who made the change (for admin changes)
+  ipAddress         String?
+  userAgent         String?
+  metadata          Json?       // Additional context
+  createdAt         DateTime    @default(now())
+
+  @@index([userId])
+  @@index([changeType])
+  @@index([createdAt])
+  @@map("user_profile_history")
+}
+
+enum ProfileChangeType {
+  PROFILE_UPDATE
+  PASSWORD_CHANGE
+  EMAIL_CHANGE
+  PREFERENCES_UPDATE
+  ACCOUNT_DEACTIVATION
+  ACCOUNT_REACTIVATION
+  PROFILE_PICTURE_UPLOAD
+  PROFILE_PICTURE_REMOVE
 }
 
 model SecurityEvent {
@@ -1515,4 +1579,379 @@ model PrivacyPolicy {
   @@index([isActive])
   @@index([effectiveDate])
   @@map("privacy_policies")
+}
+
+// Package Management System
+model Package {
+  id                String      @id @default(cuid())
+  name              String
+  description       String?     @db.LongText
+  shortDescription  String?
+  category          PackageCategory @default(EMAIL_MARKETING)
+  
+  // Pricing
+  price             Float
+  currency          String      @default("USD")
+  billingCycle      PackageBillingCycle @default(MONTHLY)
+  setupFee          Float?      @default(0)
+  trialDays         Int?        @default(0)
+  
+  // Feature limitations and quotas
+  features          Json        // Available features
+  quotas            Json        // Usage limits (emails, subscribers, campaigns, etc.)
+  
+  // Package status and visibility
+  status            PackageStatus @default(DRAFT)
+  isPublic          Boolean     @default(false)
+  isFeatured        Boolean     @default(false)
+  
+  // Creator information (admin company)
+  creator           Tenant      @relation("PackageCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  creatorId         String
+  
+  // Commission and revenue sharing
+  platformCommission Float     @default(10.0) // Percentage
+  creatorRevenue    Float       @default(90.0) // Percentage
+  
+  // Marketing and display
+  images            Json?       // Array of image URLs
+  tags              Json?       // Array of tags for categorization
+  highlights        Json?       // Key selling points
+  
+  // Analytics
+  totalViews        Int         @default(0)
+  totalPurchases    Int         @default(0)
+  totalRevenue      Float       @default(0)
+  averageRating     Float?
+  totalReviews      Int         @default(0)
+  
+  // SEO and metadata
+  slug              String?     @unique
+  metaTitle         String?
+  metaDescription   String?
+  
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  
+  // Relationships
+  purchases         PackagePurchase[]
+  sales             PackageSale[]
+  reviews           PackageReview[]
+  analytics         PackageAnalytics[]
+  templates         PackageTemplate[]
+
+  @@index([creatorId])
+  @@index([status])
+  @@index([category])
+  @@index([isPublic])
+  @@index([isFeatured])
+  @@index([slug])
+  @@map("packages")
+}
+
+enum PackageCategory {
+  EMAIL_MARKETING
+  AUTOMATION
+  ANALYTICS
+  INTEGRATIONS
+  TEMPLATES
+  CUSTOM
+}
+
+enum PackageBillingCycle {
+  MONTHLY
+  QUARTERLY
+  YEARLY
+  ONE_TIME
+}
+
+enum PackageStatus {
+  DRAFT
+  PENDING_REVIEW
+  APPROVED
+  PUBLISHED
+  SUSPENDED
+  ARCHIVED
+}
+
+// Package Purchases (customers buying packages)
+model PackagePurchase {
+  id                String      @id @default(cuid())
+  package           Package     @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  packageId         String
+  customer          Tenant      @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customerId        String
+  
+  // Purchase details
+  purchasePrice     Float
+  currency          String      @default("USD")
+  billingCycle      PackageBillingCycle
+  status            PurchaseStatus @default(ACTIVE)
+  
+  // Subscription management
+  currentPeriodStart DateTime
+  currentPeriodEnd  DateTime
+  cancelAtPeriodEnd Boolean     @default(false)
+  trialEnd          DateTime?
+  
+  // Payment information
+  paymentProvider   String?
+  customerPaymentId String?     // Payment provider customer ID
+  subscriptionPaymentId String? // Payment provider subscription ID
+  
+  // Usage tracking
+  quotas            Json        // Purchased quotas
+  usage             Json        // Current usage
+  
+  // Metadata
+  metadata          Json?
+  notes             String?     @db.LongText
+  
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  
+  // Relationships
+  invoices          PackageInvoice[]
+  usageHistory      PackageUsageHistory[]
+  sale              PackageSale?
+
+  @@index([packageId])
+  @@index([customerId])
+  @@index([status])
+  @@index([currentPeriodEnd])
+  @@map("package_purchases")
+}
+
+enum PurchaseStatus {
+  ACTIVE
+  TRIALING
+  PAST_DUE
+  CANCELLED
+  SUSPENDED
+  EXPIRED
+}
+
+// Package Sales (tracking sales for admin companies)
+model PackageSale {
+  id                String      @id @default(cuid())
+  package           Package     @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  packageId         String
+  seller            Tenant      @relation(fields: [sellerId], references: [id], onDelete: Cascade)
+  sellerId          String
+  purchase          PackagePurchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  purchaseId        String      @unique
+  
+  // Revenue breakdown
+  totalAmount       Float
+  platformCommission Float
+  sellerRevenue     Float
+  currency          String      @default("USD")
+  
+  // Commission status
+  commissionStatus  CommissionStatus @default(PENDING)
+  commissionPaidAt  DateTime?
+  
+  // Payment tracking
+  paymentProvider   String?
+  transactionId     String?
+  
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([packageId])
+  @@index([sellerId])
+  @@index([commissionStatus])
+  @@index([createdAt])
+  @@map("package_sales")
+}
+
+enum CommissionStatus {
+  PENDING
+  PROCESSING
+  PAID
+  FAILED
+  DISPUTED
+}
+
+// Package Reviews and Ratings
+model PackageReview {
+  id                String      @id @default(cuid())
+  package           Package     @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  packageId         String
+  reviewer          Tenant      @relation(fields: [reviewerId], references: [id], onDelete: Cascade)
+  reviewerId        String
+  
+  // Review content
+  rating            Int         // 1-5 stars
+  title             String?
+  content           String?     @db.LongText
+  
+  // Review status
+  status            ReviewStatus @default(PUBLISHED)
+  isVerifiedPurchase Boolean    @default(false)
+  
+  // Moderation
+  moderatedBy       String?     // User ID who moderated
+  moderatedAt       DateTime?
+  moderationNotes   String?     @db.LongText
+  
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@unique([packageId, reviewerId])
+  @@index([packageId])
+  @@index([reviewerId])
+  @@index([status])
+  @@index([rating])
+  @@map("package_reviews")
+}
+
+enum ReviewStatus {
+  PENDING
+  PUBLISHED
+  HIDDEN
+  REJECTED
+}
+
+// Package Analytics
+model PackageAnalytics {
+  id                String      @id @default(cuid())
+  package           Package     @relation(fields: [packageId], references: [id], onDelete: Cascade)
+  packageId         String
+  date              DateTime    @db.Date
+  
+  // View metrics
+  views             Int         @default(0)
+  uniqueViews       Int         @default(0)
+  
+  // Conversion metrics
+  purchases         Int         @default(0)
+  revenue           Float       @default(0)
+  conversionRate    Float       @default(0)
+  
+  // Traffic sources
+  trafficSources    Json?       // Breakdown of traffic sources
+  
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@unique([packageId, date])
+  @@index([packageId])
+  @@index([date])
+  @@map("package_analytics")
+}
+
+// Package Templates (pre-built package configurations)
+model PackageTemplate {
+  id                String      @id @default(cuid())
+  name              String
+  description       String?     @db.LongText
+  category          PackageCategory
+  
+  // Template configuration
+  templateData      Json        // Package configuration template
+  features          Json        // Default features
+  quotas            Json        // Default quotas
+  
+  // Pricing suggestions
+  suggestedPrice    Float?
+  priceRange        Json?       // Min/max price suggestions
+  
+  // Template metadata
+  isOfficial        Boolean     @default(false) // Created by platform
+  usageCount        Int         @default(0)
+  
+  // Associated package (if created from template)
+  package           Package?    @relation(fields: [packageId], references: [id], onDelete: SetNull)
+  packageId         String?
+  
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([category])
+  @@index([isOfficial])
+  @@index([packageId])
+  @@map("package_templates")
+}
+
+// Package Invoices
+model PackageInvoice {
+  id                String      @id @default(cuid())
+  purchase          PackagePurchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  purchaseId        String
+  
+  // Invoice details
+  invoiceNumber     String      @unique
+  status            PackageInvoiceStatus @default(PENDING)
+  currency          String      @default("USD")
+  
+  // Amounts
+  subtotal          Float
+  taxAmount         Float       @default(0)
+  discountAmount    Float       @default(0)
+  total             Float
+  amountPaid        Float       @default(0)
+  amountDue         Float
+  
+  // Dates
+  issueDate         DateTime    @default(now())
+  dueDate           DateTime
+  paidAt            DateTime?
+  
+  // Billing period
+  periodStart       DateTime
+  periodEnd         DateTime
+  
+  // Line items and details
+  lineItems         Json        // Array of invoice line items
+  billingAddress    Json?
+  
+  // Payment provider info
+  paymentProvider   String?
+  providerInvoiceId String?
+  
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([purchaseId])
+  @@index([status])
+  @@index([dueDate])
+  @@index([invoiceNumber])
+  @@map("package_invoices")
+}
+
+enum PackageInvoiceStatus {
+  PENDING
+  SENT
+  PAID
+  OVERDUE
+  CANCELLED
+  REFUNDED
+}
+
+// Package Usage History
+model PackageUsageHistory {
+  id                String      @id @default(cuid())
+  purchase          PackagePurchase @relation(fields: [purchaseId], references: [id], onDelete: Cascade)
+  purchaseId        String
+  
+  // Usage tracking
+  resourceType      String      // emails, subscribers, campaigns, etc.
+  usageAmount       Int
+  quotaLimit        Int
+  date              DateTime    @db.Date
+  
+  // Overage tracking
+  isOverage         Boolean     @default(false)
+  overageAmount     Int         @default(0)
+  overageCharge     Float       @default(0)
+  
+  createdAt         DateTime    @default(now())
+
+  @@unique([purchaseId, resourceType, date])
+  @@index([purchaseId])
+  @@index([resourceType])
+  @@index([date])
+  @@index([isOverage])
+  @@map("package_usage_history")
 }

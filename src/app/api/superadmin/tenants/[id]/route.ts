@@ -3,7 +3,8 @@ import { withSuperAdmin } from '@/lib/rbac/authorization'
 import { platformAnalyticsService } from '@/services/platform-analytics.service'
 import { prisma } from '@/lib/prisma'
 
-async function handlePatch(request: NextRequest, { params }: { params: { id: string } }) {
+async function handlePatch(request: NextRequest, context: { params: { id: string } }) {
+  const { params } = context;
   try {
     const { action } = await request.json()
     
@@ -35,7 +36,8 @@ async function handlePatch(request: NextRequest, { params }: { params: { id: str
   }
 }
 
-async function handleDelete(request: NextRequest, { params }: { params: { id: string } }) {
+async function handleDelete(request: NextRequest, context: { params: { id: string } }) {
+  const { params } = context;
   try {
     // Delete tenant and all associated data
     await prisma.tenant.delete({
@@ -60,5 +62,5 @@ async function handleDelete(request: NextRequest, { params }: { params: { id: st
   }
 }
 
-export const PATCH = withSuperAdmin(handlePatch)
-export const DELETE = withSuperAdmin(handleDelete)
+export const PATCH = withSuperAdmin(handlePatch as any)
+export const DELETE = withSuperAdmin(handleDelete as any)

@@ -16,13 +16,8 @@ const updateTicketSchema = z.object({
   customFields: z.record(z.string(), z.any()).optional(),
 });
 
-interface RouteParams {
-  params: {
-    id: string;
-  };
-}
-
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, context: { params: { id: string } }) {
+  const { params } = context;
   try {
     const session = await auth();
     if (!session?.user?.tenantId) {
@@ -42,7 +37,8 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-export async function PUT(request: NextRequest, { params }: RouteParams) {
+export async function PUT(request: NextRequest, context: { params: { id: string } }) {
+  const { params } = context;
   try {
     const session = await auth();
     if (!session?.user?.tenantId) {
@@ -77,7 +73,8 @@ export async function PUT(request: NextRequest, { params }: RouteParams) {
   }
 }
 
-export async function DELETE(request: NextRequest, { params }: RouteParams) {
+export async function DELETE(request: NextRequest, context: { params: { id: string } }) {
+  const { params } = context;
   try {
     const session = await auth();
     if (!session?.user?.tenantId) {
