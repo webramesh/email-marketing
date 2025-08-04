@@ -5,6 +5,7 @@ import { rbacPageMiddleware } from "@/lib/rbac/authorization"
 import { Resource, Action } from "@/lib/rbac/permissions"
 import { tenantMiddleware, middlewareConfigs } from "@/lib/tenant/middleware"
 import { enhancedSessionMiddleware } from "@/lib/enhanced-session-middleware"
+import { passwordChangeMiddleware } from "@/lib/password-change-middleware"
 
 // Define resource paths for RBAC enforcement
 const resourcePathMap = {
@@ -140,6 +141,12 @@ export default async function middleware(request: NextRequest) {
   const sessionResponse = await enhancedSessionMiddleware(request)
   if (sessionResponse) {
     return sessionResponse
+  }
+
+  // Apply password change middleware
+  const passwordResponse = await passwordChangeMiddleware(request)
+  if (passwordResponse) {
+    return passwordResponse
   }
 
   // Enforce MFA for sensitive API operations

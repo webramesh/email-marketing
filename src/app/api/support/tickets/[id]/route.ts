@@ -16,8 +16,8 @@ const updateTicketSchema = z.object({
   customFields: z.record(z.string(), z.any()).optional(),
 });
 
-export async function GET(request: NextRequest, context: { params: { id: string } }) {
-  const { params } = context;
+export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   try {
     const session = await auth();
     if (!session?.user?.tenantId) {
@@ -37,8 +37,8 @@ export async function GET(request: NextRequest, context: { params: { id: string 
   }
 }
 
-export async function PUT(request: NextRequest, context: { params: { id: string } }) {
-  const { params } = context;
+export async function PUT(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   try {
     const session = await auth();
     if (!session?.user?.tenantId) {
@@ -73,8 +73,8 @@ export async function PUT(request: NextRequest, context: { params: { id: string 
   }
 }
 
-export async function DELETE(request: NextRequest, context: { params: { id: string } }) {
-  const { params } = context;
+export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   try {
     const session = await auth();
     if (!session?.user?.tenantId) {

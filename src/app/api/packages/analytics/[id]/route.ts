@@ -8,13 +8,8 @@ const querySchema = z.object({
   days: z.number().min(1).max(365).default(30),
 });
 
-interface RouteParams {
-  params: {
-    id: string;
-  };
-}
-
-export async function GET(request: NextRequest, { params }: RouteParams) {
+export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   try {
     const session = await auth();
     if (!session?.user?.tenantId) {

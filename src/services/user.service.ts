@@ -197,9 +197,13 @@ export class UserService {
     user?: UserWithTenant;
     availableTenants?: Tenant[];
     error?: string;
+    requiresPasswordChange?: boolean;
+    isLocked?: boolean;
+    attemptsRemaining?: number;
   }> {
     try {
       const bcrypt = require('bcryptjs');
+      const { PasswordSecurityService } = await import('./password-security.service');
 
       if (tenantId) {
         // Traditional login with tenant ID
@@ -212,18 +216,43 @@ export class UserService {
           };
         }
 
+        // Check if account is locked
+        const isLocked = await PasswordSecurityService.isAccountLocked(user.id);
+        if (isLocked) {
+          return {
+            isValid: false,
+            error: 'Account is temporarily locked due to too many failed login attempts',
+            isLocked: true,
+          };
+        }
+
         const isPasswordValid = bcrypt.compareSync(password, user.password);
 
         if (!isPasswordValid) {
+          // Handle failed login attempt
+          const { isLocked: newLockStatus, attemptsRemaining } =
+            await PasswordSecurityService.handleFailedLogin(user.id);
+
           return {
             isValid: false,
-            error: 'Invalid password',
+            error: newLockStatus
+              ? 'Account has been locked due to too many failed login attempts'
+              : 'Invalid password',
+            isLocked: newLockStatus,
+            attemptsRemaining,
           };
         }
+
+        // Reset failed login attempts on successful login
+        await PasswordSecurityService.resetFailedLoginAttempts(user.id);
+
+        // Check if password needs to be changed
+        const requiresPasswordChange = await PasswordSecurityService.isPasswordExpired(user.id);
 
         return {
           isValid: true,
           user,
+          requiresPasswordChange,
         };
       } else {
         // Tenant-less login - find all user accounts
@@ -238,12 +267,26 @@ export class UserService {
 
         // Check password against all user accounts
         let validUser: UserWithTenant | undefined;
+        let requiresPasswordChange = false;
 
         for (const user of users) {
+          // Check if account is locked
+          const isLocked = await PasswordSecurityService.isAccountLocked(user.id);
+          if (isLocked) {
+            continue; // Skip locked accounts
+          }
+
           const isPasswordValid = bcrypt.compareSync(password, user.password);
           if (isPasswordValid) {
             validUser = user;
+            // Reset failed login attempts on successful login
+            await PasswordSecurityService.resetFailedLoginAttempts(user.id);
+            // Check if password needs to be changed
+            requiresPasswordChange = await PasswordSecurityService.isPasswordExpired(user.id);
             break;
+          } else {
+            // Handle failed login attempt
+            await PasswordSecurityService.handleFailedLogin(user.id);
           }
         }
 
@@ -261,6 +304,7 @@ export class UserService {
           isValid: true,
           user: validUser,
           availableTenants: availableTenants.length > 1 ? availableTenants : undefined,
+          requiresPasswordChange,
         };
       }
     } catch (error) {

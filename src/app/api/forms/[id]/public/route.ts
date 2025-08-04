@@ -38,10 +38,10 @@ export async function GET(
       fields: form.fields,
       styling: form.styling,
       settings: {
-        showThankYouMessage: form.settings?.showThankYouMessage,
-        thankYouMessage: form.settings?.thankYouMessage,
-        redirectUrl: form.settings?.redirectUrl,
-        enableDoubleOptIn: form.settings?.enableDoubleOptIn,
+        showThankYouMessage: (form.settings as any)?.showThankYouMessage,
+        thankYouMessage: (form.settings as any)?.thankYouMessage,
+        redirectUrl: (form.settings as any)?.redirectUrl,
+        enableDoubleOptIn: (form.settings as any)?.enableDoubleOptIn,
       },
     };
 

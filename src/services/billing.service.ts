@@ -155,7 +155,10 @@ export class BillingService {
 
       const result = await this.paymentService.processPayment(
         paymentRequest,
-        subscription.paymentProvider
+        {
+          tenantId: subscription.tenantId,
+        },
+        subscription.paymentProvider as any
       );
 
       return {

@@ -10,13 +10,8 @@ const createReviewSchema = z.object({
   content: z.string().optional(),
 });
 
-interface RouteParams {
-  params: {
-    id: string;
-  };
-}
-
-export async function POST(request: NextRequest, { params }: RouteParams) {
+export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
+  const params = await context.params;
   try {
     const session = await auth();
     if (!session?.user?.tenantId) {

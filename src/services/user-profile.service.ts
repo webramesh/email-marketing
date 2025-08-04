@@ -283,57 +283,46 @@ export class UserProfileService {
   }
 
   /**
-   * Change user password with history tracking
+   * Change user password with enhanced security
    */
   static async changePassword(
     userId: string,
     currentPassword: string,
     newPassword: string,
     context: ProfileUpdateContext
-  ): Promise<{ success: boolean; error?: string }> {
+  ): Promise<{ success: boolean; error?: string; warnings?: string[] }> {
     try {
-      const user = await prisma.user.findUnique({
-        where: { id: userId },
-        select: { password: true },
-      });
-
-      if (!user) {
-        return { success: false, error: 'User not found' };
-      }
-
-      // Verify current password
-      const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
-      if (!isCurrentPasswordValid) {
-        return { success: false, error: 'Current password is incorrect' };
-      }
-
-      // Hash new password
-      const hashedNewPassword = await bcrypt.hash(newPassword, 12);
-
-      // Update password
-      await prisma.user.update({
-        where: { id: userId },
-        data: {
-          password: hashedNewPassword,
-          updatedAt: new Date(),
-        },
-      });
-
-      // Record password change
-      await prisma.userProfileHistory.create({
-        data: {
-          userId,
-          changeType: ProfileChangeType.PASSWORD_CHANGE,
-          fieldName: 'password',
-          oldValue: '[REDACTED]',
-          newValue: '[REDACTED]',
-          changedBy: context.changedBy,
+      const { PasswordSecurityService } = await import('./password-security.service');
+      
+      // Use the enhanced password security service
+      const result = await PasswordSecurityService.changePassword(
+        userId,
+        currentPassword,
+        newPassword,
+        {
           ipAddress: context.ipAddress,
           userAgent: context.userAgent,
-        },
-      });
+          changedBy: context.changedBy,
+        }
+      );
 
-      return { success: true };
+      if (result.success) {
+        // Record password change in profile history
+        await prisma.userProfileHistory.create({
+          data: {
+            userId,
+            changeType: ProfileChangeType.PASSWORD_CHANGE,
+            fieldName: 'password',
+            oldValue: '[REDACTED]',
+            newValue: '[REDACTED]',
+            changedBy: context.changedBy,
+            ipAddress: context.ipAddress,
+            userAgent: context.userAgent,
+          },
+        });
+      }
+
+      return result;
     } catch (error) {
       console.error('Error changing password:', error);
       return { success: false, error: 'Failed to change password' };

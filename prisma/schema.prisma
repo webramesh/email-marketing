@@ -68,6 +68,15 @@ model User {
   mfaBackupCodes    Json?
   mfaLastVerified   DateTime?
   
+  // Password security fields
+  passwordChangedAt DateTime?   // When password was last changed
+  passwordExpiresAt DateTime?   // When password expires (if policy requires)
+  mustChangePassword Boolean    @default(false) // Force password change on next login
+  failedLoginAttempts Int       @default(0) // Track failed login attempts
+  lockedUntil       DateTime?   // Account lockout timestamp
+  isCompromised     Boolean     @default(false) // Flag for compromised passwords
+  compromisedAt     DateTime?   // When password was marked as compromised
+  
   // Profile fields
   firstName         String?
   lastName          String?
@@ -113,10 +122,17 @@ model User {
   
   // Profile relationships
   profileHistory    UserProfileHistory[]
+  passwordHistory   PasswordHistory[]
+  passwordResetTokens PasswordResetToken[]
 
   @@unique([email, tenantId])
   @@index([tenantId])
   @@index([isActive])
+  @@index([passwordExpiresAt])
+  @@index([mustChangePassword])
+  @@index([failedLoginAttempts])
+  @@index([lockedUntil])
+  @@index([isCompromised])
   @@map("users")
 }
 
@@ -125,6 +141,55 @@ enum UserRole {
   ADMIN
   USER
   SUPPORT
+}
+
+// Password History for preventing password reuse
+model PasswordHistory {
+  id                String      @id @default(cuid())
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId            String
+  passwordHash      String      // Hashed password
+  createdAt         DateTime    @default(now())
+  ipAddress         String?
+  userAgent         String?
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("password_history")
+}
+
+// Password Reset Tokens
+model PasswordResetToken {
+  id                String      @id @default(cuid())
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  userId            String
+  token             String      @unique
+  tokenHash         String      @unique // Hashed version of token for security
+  expiresAt         DateTime
+  isUsed            Boolean     @default(false)
+  usedAt            DateTime?
+  verificationMethod PasswordResetMethod
+  verificationData  Json?       // Store verification data (email, phone, etc.)
+  ipAddress         String?
+  userAgent         String?
+  metadata          Json?       // Additional context
+  createdAt         DateTime    @default(now())
+
+  @@index([userId])
+  @@index([token])
+  @@index([tokenHash])
+  @@index([expiresAt])
+  @@index([isUsed])
+  @@index([verificationMethod])
+  @@map("password_reset_tokens")
+}
+
+enum PasswordResetMethod {
+  EMAIL
+  SMS
+  SECURITY_QUESTIONS
+  BACKUP_EMAIL
+  ADMIN_RESET
 }
 
 // Enhanced Session Management Models

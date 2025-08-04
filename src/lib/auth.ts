@@ -26,6 +26,7 @@ declare module 'next-auth' {
         subdomain: string;
         customDomain?: string;
       }[];
+      requiresPasswordChange?: boolean;
     };
     sessionCreated: number;
   }
@@ -48,6 +49,7 @@ declare module 'next-auth' {
       subdomain: string;
       customDomain?: string;
     }[];
+    requiresPasswordChange?: boolean;
   }
 }
 
@@ -68,6 +70,7 @@ declare module 'next-auth/jwt' {
       customDomain?: string;
     }[];
     sessionCreated: number;
+    requiresPasswordChange?: boolean;
   }
 }
 
@@ -121,6 +124,7 @@ export const authOptions = {
               subdomain: tenant.subdomain,
               customDomain: tenant.customDomain || undefined,
             })),
+            requiresPasswordChange: authResult.requiresPasswordChange,
           };
         } catch (error) {
           console.error('Authentication error:', error);
@@ -142,6 +146,7 @@ export const authOptions = {
         token.tenant = user.tenant;
         token.availableTenants = user.availableTenants;
         token.sessionCreated = Date.now();
+        token.requiresPasswordChange = user.requiresPasswordChange;
       }
 
       // Check for remember me token on session update
@@ -160,6 +165,7 @@ export const authOptions = {
         session.user.tenant = token.tenant;
         session.user.availableTenants = token.availableTenants;
         session.sessionCreated = token.sessionCreated;
+        session.user.requiresPasswordChange = token.requiresPasswordChange;
       }
       return session;
     },
