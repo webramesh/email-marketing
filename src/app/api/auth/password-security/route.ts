@@ -31,6 +31,25 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const { searchParams } = new URL(request.url);
+    const action = searchParams.get('action');
+
+    if (action === 'audit' && session.user.role === 'ADMIN') {
+      // Admin can audit password security for their tenant
+      const auditResult = await PasswordSecurityService.auditPasswordSecurity(session.user.tenantId);
+      return NextResponse.json({
+        success: true,
+        audit: auditResult,
+      });
+    } else if (action === 'audit' && session.user.role === 'SUPERADMIN') {
+      // Superadmin can audit all tenants
+      const auditResult = await PasswordSecurityService.auditPasswordSecurity();
+      return NextResponse.json({
+        success: true,
+        audit: auditResult,
+      });
+    }
+
     const status = await PasswordSecurityService.getPasswordSecurityStatus(session.user.id);
 
     return NextResponse.json({

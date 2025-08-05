@@ -10,16 +10,37 @@ interface PasswordSecurityStatus {
   mustChange: boolean;
   daysUntilExpiration?: number;
   lastChanged?: string;
+  securityScore: number;
+  recommendations: string[];
 }
 
-export function PasswordSecurityDashboard() {
+interface PasswordAuditResult {
+  totalUsers: number;
+  compromisedPasswords: number;
+  expiredPasswords: number;
+  weakPasswords: number;
+  lockedAccounts: number;
+  recommendations: string[];
+}
+
+interface PasswordSecurityDashboardProps {
+  showAudit?: boolean;
+  userRole?: string;
+}
+
+export function PasswordSecurityDashboard({ showAudit = false, userRole }: PasswordSecurityDashboardProps) {
   const [status, setStatus] = useState<PasswordSecurityStatus | null>(null);
+  const [auditResult, setAuditResult] = useState<PasswordAuditResult | null>(null);
   const [loading, setLoading] = useState(true);
+  const [auditLoading, setAuditLoading] = useState(false);
   const [error, setError] = useState('');
 
   useEffect(() => {
     fetchPasswordStatus();
-  }, []);
+    if (showAudit) {
+      fetchAuditData();
+    }
+  }, [showAudit]);
 
   const fetchPasswordStatus = async () => {
     try {
@@ -37,8 +58,27 @@ export function PasswordSecurityDashboard() {
     }
   };
 
+  const fetchAuditData = async () => {
+    if (!showAudit || !['ADMIN', 'SUPERADMIN'].includes(userRole || '')) return;
+    
+    setAuditLoading(true);
+    try {
+      const response = await fetch('/api/auth/password-security?action=audit');
+      if (response.ok) {
+        const data = await response.json();
+        setAuditResult(data.audit);
+      }
+    } catch (error) {
+      console.error('Failed to fetch audit data:', error);
+    } finally {
+      setAuditLoading(false);
+    }
+  };
+
   const getSecurityLevel = () => {
     if (!status) return { level: 'unknown', color: 'gray', text: 'Unknown' };
+    
+    const score = status.securityScore;
     
     if (status.isCompromised) {
       return { level: 'critical', color: 'red', text: 'Critical - Compromised' };
@@ -48,15 +88,17 @@ export function PasswordSecurityDashboard() {
       return { level: 'high', color: 'red', text: 'High Risk - Expired' };
     }
     
-    if (status.daysUntilExpiration && status.daysUntilExpiration <= 7) {
-      return { level: 'medium', color: 'yellow', text: 'Medium - Expiring Soon' };
+    if (score >= 90) {
+      return { level: 'excellent', color: 'green', text: 'Excellent' };
+    } else if (score >= 75) {
+      return { level: 'good', color: 'blue', text: 'Good' };
+    } else if (score >= 60) {
+      return { level: 'fair', color: 'yellow', text: 'Fair' };
+    } else if (score >= 40) {
+      return { level: 'poor', color: 'orange', text: 'Poor' };
+    } else {
+      return { level: 'critical', color: 'red', text: 'Critical' };
     }
-    
-    if (status.daysUntilExpiration && status.daysUntilExpiration <= 30) {
-      return { level: 'low', color: 'blue', text: 'Low - Expiring' };
-    }
-    
-    return { level: 'good', color: 'green', text: 'Good' };
   };
 
   const formatDate = (dateString?: string) => {
@@ -110,6 +152,36 @@ export function PasswordSecurityDashboard() {
             {securityLevel.text}
           </div>
         </div>
+
+        {/* Security Score */}
+        {status && (
+          <div className="bg-gray-50 p-4 rounded-lg">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-sm font-medium text-gray-600">Security Score</span>
+              <span className={`text-lg font-bold ${
+                status.securityScore >= 90 ? 'text-green-600' :
+                status.securityScore >= 75 ? 'text-blue-600' :
+                status.securityScore >= 60 ? 'text-yellow-600' :
+                status.securityScore >= 40 ? 'text-orange-600' :
+                'text-red-600'
+              }`}>
+                {status.securityScore}/100
+              </span>
+            </div>
+            <div className="w-full bg-gray-200 rounded-full h-2">
+              <div 
+                className={`h-2 rounded-full transition-all duration-300 ${
+                  status.securityScore >= 90 ? 'bg-green-500' :
+                  status.securityScore >= 75 ? 'bg-blue-500' :
+                  status.securityScore >= 60 ? 'bg-yellow-500' :
+                  status.securityScore >= 40 ? 'bg-orange-500' :
+                  'bg-red-500'
+                }`}
+                style={{ width: `${status.securityScore}%` }}
+              ></div>
+            </div>
+          </div>
+        )}
 
         {/* Status Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -172,17 +244,74 @@ export function PasswordSecurityDashboard() {
           </div>
         )}
 
-        {/* Recommendations */}
-        <div className="bg-blue-50 p-4 rounded-lg">
-          <h4 className="text-sm font-medium text-blue-800 mb-2">Security Recommendations</h4>
-          <ul className="text-sm text-blue-700 space-y-1">
-            <li>• Use a unique password that you haven't used before</li>
-            <li>• Include a mix of uppercase, lowercase, numbers, and symbols</li>
-            <li>• Make it at least 12 characters long</li>
-            <li>• Avoid personal information like names or birthdays</li>
-            <li>• Consider using a password manager</li>
-          </ul>
-        </div>
+        {/* Personalized Recommendations */}
+        {status && status.recommendations.length > 0 && (
+          <div className="bg-blue-50 p-4 rounded-lg">
+            <h4 className="text-sm font-medium text-blue-800 mb-2">Security Recommendations</h4>
+            <ul className="text-sm text-blue-700 space-y-1">
+              {status.recommendations.map((recommendation, index) => (
+                <li key={index}>• {recommendation}</li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {/* Audit Results for Admins */}
+        {showAudit && ['ADMIN', 'SUPERADMIN'].includes(userRole || '') && (
+          <div className="border-t pt-6">
+            <div className="flex items-center justify-between mb-4">
+              <h4 className="text-lg font-semibold text-gray-900">Password Security Audit</h4>
+              <Button
+                onClick={fetchAuditData}
+                variant="outline"
+                disabled={auditLoading}
+                className="text-sm"
+              >
+                {auditLoading ? 'Loading...' : 'Refresh Audit'}
+              </Button>
+            </div>
+
+            {auditResult && (
+              <div className="space-y-4">
+                {/* Audit Stats */}
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+                  <div className="bg-gray-50 p-3 rounded-lg text-center">
+                    <div className="text-2xl font-bold text-gray-900">{auditResult.totalUsers}</div>
+                    <div className="text-xs text-gray-600">Total Users</div>
+                  </div>
+                  <div className="bg-red-50 p-3 rounded-lg text-center">
+                    <div className="text-2xl font-bold text-red-600">{auditResult.compromisedPasswords}</div>
+                    <div className="text-xs text-red-600">Compromised</div>
+                  </div>
+                  <div className="bg-yellow-50 p-3 rounded-lg text-center">
+                    <div className="text-2xl font-bold text-yellow-600">{auditResult.expiredPasswords}</div>
+                    <div className="text-xs text-yellow-600">Expired</div>
+                  </div>
+                  <div className="bg-orange-50 p-3 rounded-lg text-center">
+                    <div className="text-2xl font-bold text-orange-600">{auditResult.weakPasswords}</div>
+                    <div className="text-xs text-orange-600">Weak</div>
+                  </div>
+                  <div className="bg-purple-50 p-3 rounded-lg text-center">
+                    <div className="text-2xl font-bold text-purple-600">{auditResult.lockedAccounts}</div>
+                    <div className="text-xs text-purple-600">Locked</div>
+                  </div>
+                </div>
+
+                {/* Audit Recommendations */}
+                {auditResult.recommendations.length > 0 && (
+                  <div className="bg-amber-50 p-4 rounded-lg">
+                    <h5 className="text-sm font-medium text-amber-800 mb-2">Audit Recommendations</h5>
+                    <ul className="text-sm text-amber-700 space-y-1">
+                      {auditResult.recommendations.map((recommendation, index) => (
+                        <li key={index}>• {recommendation}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Actions */}
         <div className="flex space-x-3">
