@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { Button } from "@/components/ui/Button"
 import { Input } from "@/components/ui/Input"
 import { Card } from "@/components/ui/Card"
+import { OAuthSignInButtons } from "@/components/auth/OAuthSignInButtons"
 
 interface TenantOption {
   id: string
@@ -193,6 +194,11 @@ export default function SignInPage() {
             {isLoading ? "Signing in..." : "Sign In"}
           </Button>
         </form>
+
+        {/* OAuth Sign-in Options */}
+        <div className="mt-6">
+          <OAuthSignInButtons callbackUrl={callbackUrl} />
+        </div>
 
         <div className="mt-6 border-t pt-6">
           <div className="text-center mb-4">

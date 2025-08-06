@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/Input'
 import { Modal } from '@/components/ui/Modal'
 import { Badge } from '@/components/ui/Badge'
 import { Avatar } from '@/components/ui/Avatar'
+import { OAuthAccountManager } from '@/components/auth/OAuthAccountManager'
 
 interface UserProfile {
   id: string
@@ -545,6 +546,9 @@ export function UserProfileManager() {
               Change Password
             </Button>
           </Card>
+
+          {/* OAuth Account Management */}
+          <OAuthAccountManager />
 
           <Card className="p-6">
             <h3 className="text-lg font-medium text-gray-900 mb-4">Account Status</h3>
