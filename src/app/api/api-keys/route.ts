@@ -122,7 +122,11 @@ import { z } from 'zod'
 const createApiKeySchema = z.object({
   name: z.string().min(1, 'API key name is required').max(255),
   permissions: z.array(z.string()).min(1, 'At least one permission is required'),
-  expiresAt: z.string().datetime('Invalid date format').optional()
+  expiresAt: z.string().datetime('Invalid date format').optional(),
+  rateLimit: z.number().min(1).max(10000).optional(),
+  rateLimitWindow: z.number().min(1).max(3600).optional(),
+  allowedIps: z.array(z.string()).optional(),
+  allowedDomains: z.array(z.string()).optional(),
 })
 
 /**

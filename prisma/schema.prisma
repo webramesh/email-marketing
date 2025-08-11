@@ -1257,6 +1257,15 @@ model ApiKey {
   expiresAt         DateTime?
   isActive          Boolean     @default(true)
   userId            String?
+  
+  // Rate limiting fields
+  rateLimit         Int?        // Requests per minute
+  rateLimitWindow   Int?        // Window in seconds
+  
+  // Scoping fields
+  allowedIps        Json?       // Array of allowed IP addresses/ranges
+  allowedDomains    Json?       // Array of allowed domains
+  
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
   tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1264,9 +1273,12 @@ model ApiKey {
   
   // Relationships
   usage             ApiKeyUsage[]
+  refreshTokens     RefreshToken[]
 
   @@index([tenantId])
   @@index([keyHash])
+  @@index([isActive])
+  @@index([expiresAt])
   @@map("api_keys")
 }
 
@@ -1278,12 +1290,47 @@ model ApiKeyUsage {
   method            String
   statusCode        Int
   responseTime      Int
+  ipAddress         String?
+  userAgent         String?
+  requestSize       Int?        // Request body size in bytes
+  responseSize      Int?        // Response body size in bytes
   timestamp         DateTime    @default(now())
 
   @@index([apiKeyId])
   @@index([timestamp])
   @@index([endpoint])
+  @@index([statusCode])
   @@map("api_key_usage")
+}
+
+// JWT Refresh Tokens for API authentication
+model RefreshToken {
+  id                String      @id @default(cuid())
+  tokenHash         String      @unique
+  apiKey            ApiKey      @relation(fields: [apiKeyId], references: [id], onDelete: Cascade)
+  apiKeyId          String
+  expiresAt         DateTime
+  isRevoked         Boolean     @default(false)
+  revokedAt         DateTime?
+  revokedReason     String?
+  
+  // Security tracking
+  ipAddress         String?
+  userAgent         String?
+  deviceFingerprint String?
+  
+  // Usage tracking
+  lastUsedAt        DateTime?
+  usageCount        Int         @default(0)
+  
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([apiKeyId])
+  @@index([tokenHash])
+  @@index([expiresAt])
+  @@index([isRevoked])
+  @@map("refresh_tokens")
 }
 
 model Webhook {

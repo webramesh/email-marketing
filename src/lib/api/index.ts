@@ -27,20 +27,6 @@ export interface ApiError {
   details?: any;
 }
 
-// API Key types
-export interface ApiKey {
-  id: string;
-  name: string;
-  key: string;
-  tenantId: string;
-  permissions: string[];
-  lastUsedAt?: Date;
-  expiresAt?: Date;
-  isActive: boolean;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
 // Rate limiting types
 export interface RateLimitConfig {
   windowMs: number;
@@ -160,43 +146,89 @@ export function getUserId(request: NextRequest): string | null {
 }
 
 // API Key authentication
-export async function validateApiKey(apiKey: string): Promise<ApiKey | null> {
-  // This would typically query the database for the API key
-  // For now, we'll implement a basic structure
-  try {
-    // Decode the API key (assuming it's a JWT for this implementation)
-    const decoded = jwt.verify(apiKey, process.env.API_KEY_SECRET || 'default-secret') as any;
-
-    // Return mock API key data - in production this would query the database
-    return {
-      id: decoded.keyId,
-      name: decoded.name,
-      key: apiKey,
-      tenantId: decoded.tenantId,
-      permissions: decoded.permissions || [],
-      isActive: true,
-      createdAt: new Date(decoded.iat * 1000),
-      updatedAt: new Date(),
-    };
-  } catch (error) {
-    return null;
-  }
+export async function validateApiKey(apiKey: string): Promise<import('@/services/api-key.service').ApiKey | null> {
+  // Import here to avoid circular dependencies
+  const { ApiKeyService } = await import('@/services/api-key.service');
+  return ApiKeyService.validateApiKey(apiKey);
 }
 
 // API authentication middleware
 export function withApiAuth(handler: (request: NextRequest) => Promise<NextResponse>) {
   return async (request: NextRequest): Promise<NextResponse> => {
     try {
+      // Check for JWT access token first
+      const authHeader = request.headers.get('Authorization');
+      if (authHeader?.startsWith('Bearer ')) {
+        const token = authHeader.substring(7);
+        
+        // Try to validate as JWT access token
+        const { JwtRefreshService } = await import('@/services/jwt-refresh.service');
+        const jwtPayload = await JwtRefreshService.validateAccessToken(token);
+        
+        if (jwtPayload) {
+          // Add JWT context to headers
+          const headers = new Headers(request.headers);
+          headers.set('X-Tenant-ID', jwtPayload.tenantId);
+          headers.set('X-API-Key-ID', jwtPayload.sub);
+          if (jwtPayload.userId) {
+            headers.set('X-User-ID', jwtPayload.userId);
+          }
+
+          // Create new request with updated headers
+          const newRequest = new NextRequest(request.url, {
+            method: request.method,
+            headers,
+            body: request.body,
+          });
+
+          return await handler(newRequest);
+        }
+      }
+
       // Check for API key in header
       const apiKey =
         request.headers.get('X-API-Key') ||
-        request.headers.get('Authorization')?.replace('Bearer ', '');
+        (authHeader?.startsWith('Bearer ') ? authHeader.substring(7) : null);
 
       if (apiKey) {
         // Validate API key
         const validApiKey = await validateApiKey(apiKey);
         if (!validApiKey || !validApiKey.isActive) {
           return createErrorResponse('Invalid or inactive API key', 401);
+        }
+
+        // Get client IP for validation and rate limiting
+        const clientIp = request.headers.get('x-forwarded-for') || 
+                        request.headers.get('x-real-ip') || 
+                        request.headers.get('cf-connecting-ip') || 
+                        'unknown';
+
+        // Validate IP restrictions
+        const { ApiKeyService } = await import('@/services/api-key.service');
+        if (!ApiKeyService.validateIpAddress(validApiKey, clientIp)) {
+          return createErrorResponse('Access denied: IP address not allowed', 403);
+        }
+
+        // Validate domain restrictions
+        const requestDomain = request.headers.get('host') || '';
+        if (!ApiKeyService.validateDomain(validApiKey, requestDomain)) {
+          return createErrorResponse('Access denied: Domain not allowed', 403);
+        }
+
+        // Check rate limits
+        const rateLimitResult = await ApiKeyService.checkRateLimit(validApiKey, clientIp);
+        if (!rateLimitResult.allowed) {
+          return NextResponse.json(
+            createApiResponse(false, undefined, undefined, 'Rate limit exceeded'),
+            {
+              status: 429,
+              headers: {
+                'X-RateLimit-Limit': (validApiKey.rateLimit || 0).toString(),
+                'X-RateLimit-Remaining': rateLimitResult.remaining.toString(),
+                'X-RateLimit-Reset': rateLimitResult.resetTime.toString(),
+              },
+            }
+          );
         }
 
         // Add API key context to headers
@@ -211,7 +243,43 @@ export function withApiAuth(handler: (request: NextRequest) => Promise<NextRespo
           body: request.body,
         });
 
-        return await handler(newRequest);
+        // Log API usage
+        const startTime = Date.now();
+        const response = await handler(newRequest);
+        const responseTime = Date.now() - startTime;
+
+        // Log usage asynchronously
+        setImmediate(async () => {
+          try {
+            const requestSize = request.headers.get('content-length') ? 
+              parseInt(request.headers.get('content-length')!) : undefined;
+            const responseSize = response.headers.get('content-length') ? 
+              parseInt(response.headers.get('content-length')!) : undefined;
+
+            await ApiKeyService.logApiKeyUsage(
+              validApiKey.id,
+              new URL(request.url).pathname,
+              request.method,
+              response.status,
+              responseTime,
+              {
+                ipAddress: clientIp,
+                userAgent: request.headers.get('user-agent') || undefined,
+                requestSize,
+                responseSize,
+              }
+            );
+          } catch (error) {
+            console.error('Failed to log API usage:', error);
+          }
+        });
+
+        // Add rate limit headers to response
+        response.headers.set('X-RateLimit-Limit', (validApiKey.rateLimit || 0).toString());
+        response.headers.set('X-RateLimit-Remaining', rateLimitResult.remaining.toString());
+        response.headers.set('X-RateLimit-Reset', rateLimitResult.resetTime.toString());
+
+        return response;
       }
 
       // Check for session-based authentication

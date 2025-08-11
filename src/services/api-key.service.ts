@@ -15,6 +15,10 @@ export interface ApiKey {
   lastUsedAt?: Date | null;
   expiresAt?: Date | null;
   isActive: boolean;
+  rateLimit?: number | null;
+  rateLimitWindow?: number | null;
+  allowedIps?: string[] | null;
+  allowedDomains?: string[] | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -23,6 +27,10 @@ export interface CreateApiKeyRequest {
   name: string;
   permissions: string[];
   expiresAt?: Date;
+  rateLimit?: number; // Requests per minute
+  rateLimitWindow?: number; // Window in seconds
+  allowedIps?: string[]; // Array of allowed IP addresses/ranges
+  allowedDomains?: string[]; // Array of allowed domains
 }
 
 export interface ApiKeyUsage {
@@ -70,6 +78,10 @@ export class ApiKeyService {
         keyHash: this.hashApiKey(apiKey),
         permissions: data.permissions,
         expiresAt: data.expiresAt,
+        rateLimit: data.rateLimit,
+        rateLimitWindow: data.rateLimitWindow,
+        allowedIps: data.allowedIps,
+        allowedDomains: data.allowedDomains,
         tenantId,
         userId,
         isActive: true,
@@ -79,6 +91,8 @@ export class ApiKeyService {
     return {
       ...dbApiKey,
       permissions: dbApiKey.permissions as string[],
+      allowedIps: dbApiKey.allowedIps as string[] | null,
+      allowedDomains: dbApiKey.allowedDomains as string[] | null,
       key: apiKey, // Return the actual key only on creation
     };
   }
@@ -105,6 +119,10 @@ export class ApiKeyService {
       lastUsedAt: key.lastUsedAt,
       expiresAt: key.expiresAt,
       isActive: key.isActive,
+      rateLimit: key.rateLimit,
+      rateLimitWindow: key.rateLimitWindow,
+      allowedIps: key.allowedIps as string[] | null,
+      allowedDomains: key.allowedDomains as string[] | null,
       createdAt: key.createdAt,
       updatedAt: key.updatedAt,
     }));
@@ -132,6 +150,10 @@ export class ApiKeyService {
       lastUsedAt: apiKey.lastUsedAt,
       expiresAt: apiKey.expiresAt,
       isActive: apiKey.isActive,
+      rateLimit: apiKey.rateLimit,
+      rateLimitWindow: apiKey.rateLimitWindow,
+      allowedIps: apiKey.allowedIps as string[] | null,
+      allowedDomains: apiKey.allowedDomains as string[] | null,
       createdAt: apiKey.createdAt,
       updatedAt: apiKey.updatedAt,
     };
@@ -176,6 +198,10 @@ export class ApiKeyService {
         lastUsedAt: new Date(),
         expiresAt: dbApiKey.expiresAt,
         isActive: dbApiKey.isActive,
+        rateLimit: dbApiKey.rateLimit,
+        rateLimitWindow: dbApiKey.rateLimitWindow,
+        allowedIps: dbApiKey.allowedIps as string[] | null,
+        allowedDomains: dbApiKey.allowedDomains as string[] | null,
         createdAt: dbApiKey.createdAt,
         updatedAt: dbApiKey.updatedAt,
       };
@@ -191,7 +217,7 @@ export class ApiKeyService {
   static async updateApiKey(
     tenantId: string,
     keyId: string,
-    data: Partial<Pick<CreateApiKeyRequest, 'name' | 'permissions' | 'expiresAt'>>
+    data: Partial<Pick<CreateApiKeyRequest, 'name' | 'permissions' | 'expiresAt' | 'rateLimit' | 'rateLimitWindow' | 'allowedIps' | 'allowedDomains'>>
   ): Promise<Omit<ApiKey, 'key'> | null> {
     const apiKey = await prisma.apiKey.findFirst({
       where: {
@@ -219,6 +245,10 @@ export class ApiKeyService {
       lastUsedAt: updatedKey.lastUsedAt,
       expiresAt: updatedKey.expiresAt,
       isActive: updatedKey.isActive,
+      rateLimit: updatedKey.rateLimit,
+      rateLimitWindow: updatedKey.rateLimitWindow,
+      allowedIps: updatedKey.allowedIps as string[] | null,
+      allowedDomains: updatedKey.allowedDomains as string[] | null,
       createdAt: updatedKey.createdAt,
       updatedAt: updatedKey.updatedAt,
     };
@@ -264,7 +294,13 @@ export class ApiKeyService {
     endpoint: string,
     method: string,
     statusCode: number,
-    responseTime: number
+    responseTime: number,
+    metadata?: {
+      ipAddress?: string;
+      userAgent?: string;
+      requestSize?: number;
+      responseSize?: number;
+    }
   ): Promise<void> {
     try {
       await prisma.apiKeyUsage.create({
@@ -274,6 +310,10 @@ export class ApiKeyService {
           method,
           statusCode,
           responseTime,
+          ipAddress: metadata?.ipAddress,
+          userAgent: metadata?.userAgent,
+          requestSize: metadata?.requestSize,
+          responseSize: metadata?.responseSize,
           timestamp: new Date(),
         },
       });
@@ -381,6 +421,79 @@ export class ApiKeyService {
    */
   static hasPermission(apiKey: ApiKey, permission: string): boolean {
     return apiKey.permissions.includes('*') || apiKey.permissions.includes(permission);
+  }
+
+  /**
+   * Validate IP address against allowed IPs
+   */
+  static validateIpAddress(apiKey: ApiKey, clientIp: string): boolean {
+    if (!apiKey.allowedIps || apiKey.allowedIps.length === 0) {
+      return true; // No IP restrictions
+    }
+
+    return apiKey.allowedIps.some(allowedIp => {
+      // Support CIDR notation and exact IP matching
+      if (allowedIp.includes('/')) {
+        // CIDR notation - simplified check (in production, use a proper CIDR library)
+        const [network, prefixLength] = allowedIp.split('/');
+        // For now, just check if the network part matches
+        return clientIp.startsWith(network.split('.').slice(0, Math.ceil(parseInt(prefixLength) / 8)).join('.'));
+      } else {
+        // Exact IP match
+        return clientIp === allowedIp;
+      }
+    });
+  }
+
+  /**
+   * Validate domain against allowed domains
+   */
+  static validateDomain(apiKey: ApiKey, requestDomain: string): boolean {
+    if (!apiKey.allowedDomains || apiKey.allowedDomains.length === 0) {
+      return true; // No domain restrictions
+    }
+
+    return apiKey.allowedDomains.some(allowedDomain => {
+      // Support wildcard domains
+      if (allowedDomain.startsWith('*.')) {
+        const baseDomain = allowedDomain.substring(2);
+        return requestDomain.endsWith(baseDomain);
+      } else {
+        return requestDomain === allowedDomain;
+      }
+    });
+  }
+
+  /**
+   * Check API key rate limit
+   */
+  static async checkRateLimit(apiKey: ApiKey, clientIp: string): Promise<{
+    allowed: boolean;
+    remaining: number;
+    resetTime: number;
+  }> {
+    if (!apiKey.rateLimit) {
+      return { allowed: true, remaining: -1, resetTime: 0 };
+    }
+
+    const window = (apiKey.rateLimitWindow || 60) * 1000; // Convert to milliseconds
+    const now = Date.now();
+    const windowStart = now - window;
+
+    // Count recent requests
+    const recentRequests = await prisma.apiKeyUsage.count({
+      where: {
+        apiKeyId: apiKey.id,
+        timestamp: { gte: new Date(windowStart) },
+        ...(clientIp && { ipAddress: clientIp }),
+      },
+    });
+
+    const remaining = Math.max(0, apiKey.rateLimit - recentRequests);
+    const allowed = recentRequests < apiKey.rateLimit;
+    const resetTime = Math.ceil((now + window) / 1000);
+
+    return { allowed, remaining, resetTime };
   }
 
   /**

@@ -87,6 +87,10 @@ const updateApiKeySchema = z.object({
   name: z.string().min(1).max(255).optional(),
   permissions: z.array(z.string()).min(1).optional(),
   expiresAt: z.string().datetime().optional(),
+  rateLimit: z.number().min(1).max(10000).optional(),
+  rateLimitWindow: z.number().min(1).max(3600).optional(),
+  allowedIps: z.array(z.string()).optional(),
+  allowedDomains: z.array(z.string()).optional(),
 });
 
 /**
