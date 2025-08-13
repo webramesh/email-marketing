@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { auth } from '../auth'
 import { hasPermission, Resource, Action } from './permissions'
+import { EnhancedAuthorizationService } from './enhanced-authorization'
 import { UserRole, TenantContext } from '@/types'
 
 // Type declaration for RequestInit duplex option
@@ -18,13 +19,13 @@ async function getTenantContext(request: NextRequest): Promise<TenantContext | n
   // 1. Request headers (X-Tenant-ID)
   // 2. Subdomain parsing
   // 3. Session data
-  
+
   // For now, we'll use a simple implementation that gets tenant from session
   const session = await auth()
   if (!session?.user?.tenantId) {
     return null
   }
-  
+
   return {
     tenantId: session.user.tenantId,
     tenant: null // In a real implementation, we would fetch the tenant details
@@ -37,6 +38,7 @@ async function getTenantContext(request: NextRequest): Promise<TenantContext | n
  * @param resource The resource being accessed
  * @param action The action being performed
  * @returns NextResponse or null to continue
+ * @deprecated Use EnhancedAuthorizationService for package-based permissions
  */
 export async function enforcePermission(
   request: NextRequest,
@@ -45,20 +47,20 @@ export async function enforcePermission(
 ): Promise<NextResponse | null> {
   try {
     const session = await auth()
-    
+
     if (!session?.user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       )
     }
-    
+
     const { user } = session
     const userRole = user.role as UserRole
-    
+
     // Get tenant context
     const tenantContext = await getTenantContext(request)
-    
+
     // Ensure tenant context exists for tenant-specific resources
     if (!tenantContext?.tenantId && resource !== Resource.SYSTEM_SETTINGS) {
       return NextResponse.json(
@@ -66,18 +68,18 @@ export async function enforcePermission(
         { status: 400 }
       )
     }
-    
+
     // Check if user has permission to perform the action on the resource
     if (!hasPermission(userRole, resource, action)) {
       return NextResponse.json(
-        { 
+        {
           error: 'Forbidden',
           message: `You don't have permission to ${action} ${resource}`
         },
         { status: 403 }
       )
     }
-    
+
     return null // Continue with the request
   } catch (error) {
     console.error('Authorization error:', error)
@@ -89,11 +91,47 @@ export async function enforcePermission(
 }
 
 /**
+ * Enhanced middleware to enforce both role-based and package-based permissions
+ * @param request The Next.js request object
+ * @param resource The resource being accessed
+ * @param action The action being performed
+ * @returns NextResponse or null to continue
+ */
+export async function enforceEnhancedPermission(
+  request: NextRequest,
+  resource: Resource,
+  action: Action
+): Promise<NextResponse | null> {
+  const authService = new EnhancedAuthorizationService()
+
+  const result = await authService.checkEnhancedPermission(request, resource, action)
+
+  if (!result.allowed || !result.context) {
+    return NextResponse.json(
+      {
+        error: 'Forbidden',
+        message: result.reason || 'Access denied',
+        details: result.context ? {
+          hasRolePermission: result.context.hasRolePermission,
+          hasPackagePermission: result.context.hasPackagePermission,
+          restrictions: result.context.restrictions,
+          quotaStatus: result.context.quotaStatus
+        } : undefined
+      },
+      { status: 403 }
+    )
+  }
+
+  return null // Continue with the request
+}
+
+/**
  * API route wrapper that enforces role-based permissions
  * @param handler The API route handler
  * @param resource The resource being accessed
  * @param action The action being performed
  * @returns A wrapped handler function with RBAC enforcement
+ * @deprecated Use withEnhancedPermission for package-based permissions
  */
 export function withPermission<T extends any[]>(
   handler: (request: NextRequest, ...args: T) => Promise<NextResponse>,
@@ -105,12 +143,12 @@ export function withPermission<T extends any[]>(
     if (process.env.NODE_ENV === 'development') {
       const mockUserId = request.headers.get('x-mock-user-id')
       const mockTenantId = request.headers.get('x-mock-tenant-id')
-      
+
       if (mockUserId && mockTenantId) {
         // Add tenant ID to headers for downstream services
         const headers = new Headers(request.headers)
         headers.set('X-Tenant-ID', mockTenantId)
-        
+
         const requestWithTenant = new Request(request.url, {
           method: request.method,
           headers,
@@ -118,23 +156,23 @@ export function withPermission<T extends any[]>(
           signal: request.signal,
           ...(request.body && { duplex: 'half' as RequestDuplex })
         })
-        
+
         return handler(requestWithTenant as NextRequest, ...args)
       }
     }
-    
+
     const permissionResponse = await enforcePermission(request, resource, action)
     if (permissionResponse) {
       return permissionResponse
     }
-    
+
     // Add tenant context to the request for tenant-aware operations
     const tenantContext = await getTenantContext(request)
     if (tenantContext?.tenantId) {
       // Clone the request and add tenant ID header
       const headers = new Headers(request.headers)
       headers.set('X-Tenant-ID', tenantContext.tenantId)
-      
+
       const requestWithTenant = new Request(request.url, {
         method: request.method,
         headers,
@@ -142,13 +180,36 @@ export function withPermission<T extends any[]>(
         signal: request.signal,
         ...(request.body && { duplex: 'half' as RequestDuplex })
       })
-      
+
       // Pass the modified request to the handler
       return handler(requestWithTenant as NextRequest, ...args)
     }
-    
+
     return handler(request, ...args)
   }
+}
+
+/**
+ * Enhanced API route wrapper that enforces both role-based and package-based permissions
+ * @param handler The API route handler
+ * @param resource The resource being accessed
+ * @param action The action being performed
+ * @returns A wrapped handler function with enhanced RBAC enforcement
+ */
+export function withEnhancedPermission<T extends any[]>(
+  handler: (request: NextRequest, ...args: T) => Promise<NextResponse>,
+  resource: Resource,
+  action: Action
+) {
+  const authService = new EnhancedAuthorizationService()
+
+  // Create an adapter that matches the expected signature
+  const adaptedHandler = (request: NextRequest, context: any, ...args: T) => {
+    // The original handler doesn't need the context parameter, so we just pass the request and args
+    return handler(request, ...args)
+  }
+
+  return authService.withEnhancedPermission(adaptedHandler, resource, action)
 }
 
 /**
@@ -159,27 +220,27 @@ export function withPermission<T extends any[]>(
 export async function enforceAdmin(_request: NextRequest): Promise<NextResponse | null> {
   try {
     const session = await auth()
-    
+
     if (!session?.user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       )
     }
-    
+
     const { user } = session
     const userRole = user.role as UserRole
-    
+
     if (userRole !== UserRole.ADMIN) {
       return NextResponse.json(
-        { 
+        {
           error: 'Forbidden',
           message: 'This action requires administrator privileges'
         },
         { status: 403 }
       )
     }
-    
+
     return null // Continue with the request
   } catch (error) {
     console.error('Admin enforcement error:', error)
@@ -203,7 +264,7 @@ export function withAdmin<T extends any[]>(
     if (adminResponse) {
       return adminResponse
     }
-    
+
     return handler(request, ...args)
   }
 }
@@ -216,27 +277,27 @@ export function withAdmin<T extends any[]>(
 export async function enforceSuperAdmin(_request: NextRequest): Promise<NextResponse | null> {
   try {
     const session = await auth()
-    
+
     if (!session?.user) {
       return NextResponse.json(
         { error: 'Unauthorized' },
         { status: 401 }
       )
     }
-    
+
     const { user } = session
     const userRole = user.role as UserRole
-    
+
     if (userRole !== UserRole.SUPERADMIN) {
       return NextResponse.json(
-        { 
+        {
           error: 'Forbidden',
           message: 'This action requires superadmin privileges'
         },
         { status: 403 }
       )
     }
-    
+
     return null // Continue with the request
   } catch (error) {
     console.error('Superadmin enforcement error:', error)
@@ -260,7 +321,7 @@ export function withSuperAdmin<T extends any[]>(
     if (superAdminResponse) {
       return superAdminResponse
     }
-    
+
     return handler(request, ...args)
   }
 }
@@ -277,37 +338,37 @@ export async function rbacPageMiddleware(
   resourcePathMap: Record<string, { resource: Resource; action: Action }>
 ): Promise<NextResponse | null> {
   const pathname = request.nextUrl.pathname
-  
+
   // Find matching path pattern
-  const matchingPath = Object.keys(resourcePathMap).find(path => 
+  const matchingPath = Object.keys(resourcePathMap).find(path =>
     pathname.startsWith(path) || pathname === path
   )
-  
+
   if (!matchingPath) {
     return null // No RBAC rules for this path
   }
-  
+
   const { resource, action } = resourcePathMap[matchingPath]
-  
+
   try {
     const session = await auth()
-    
+
     if (!session?.user) {
       // Redirect to login page
       const redirectUrl = new URL('/auth/signin', request.url)
       redirectUrl.searchParams.set('callbackUrl', pathname)
       return NextResponse.redirect(redirectUrl)
     }
-    
+
     const { user } = session
     const userRole = user.role as UserRole
-    
+
     // Check if user has permission
     if (!hasPermission(userRole, resource, action)) {
       // Redirect to forbidden page
       return NextResponse.redirect(new URL('/forbidden', request.url))
     }
-    
+
     return null // Continue with the request
   } catch (error) {
     console.error('RBAC page middleware error:', error)

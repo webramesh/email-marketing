@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { withPermission } from '@/lib/rbac/authorization'
+import { withEnhancedPermission } from '@/lib/rbac/authorization'
+import { withAdvancedPermission } from '@/lib/rbac/package-middleware'
 import { Resource, Action } from '@/lib/rbac/permissions'
-// withMFA import removed as it's not used in this file
 import { CampaignService } from '@/services/campaign.service'
 import { CreateCampaignRequest, CampaignStatus, CampaignType } from '@/types'
 import { z } from 'zod'
@@ -135,6 +135,17 @@ async function createCampaign(request: NextRequest) {
   }
 }
 
-// Apply RBAC middleware to route handlers
-export const GET = withPermission(getCampaigns, Resource.CAMPAIGNS, Action.READ)
-export const POST = withPermission(createCampaign, Resource.CAMPAIGNS, Action.CREATE)
+// Apply enhanced RBAC middleware with package-based permissions
+export const GET = withEnhancedPermission(getCampaigns, Resource.CAMPAIGNS, Action.READ)
+
+// Apply advanced permission middleware with quota checking for campaign creation
+export const POST = withAdvancedPermission(createCampaign, {
+  resource: Resource.CAMPAIGNS,
+  action: Action.CREATE,
+  feature: 'email_builder', // Require email builder feature
+  quota: {
+    type: 'monthly_campaigns',
+    increment: 1,
+    updateAfter: true
+  }
+})
