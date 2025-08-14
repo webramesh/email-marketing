@@ -187,11 +187,13 @@ export class UserService {
 
   /**
    * Validate user credentials and return user with tenant info
+   * Integrated with security monitoring system
    */
   static async validateCredentials(
     email: string,
     password: string,
-    tenantId?: string
+    tenantId?: string,
+    request?: any // NextRequest for security monitoring
   ): Promise<{
     isValid: boolean;
     user?: UserWithTenant;
@@ -204,12 +206,43 @@ export class UserService {
     try {
       const bcrypt = require('bcryptjs');
       const { PasswordSecurityService } = await import('./password-security.service');
+      const { SecurityMonitoringService } = await import('./security-monitoring.service');
+
+      const securityMonitoringService = SecurityMonitoringService.getInstance();
+
+      // Pre-authentication security monitoring
+      if (request) {
+        const monitoringResult = await securityMonitoringService.monitorLoginAttempt(
+          email,
+          password,
+          request,
+          tenantId
+        );
+
+        if (!monitoringResult.allowed) {
+          return {
+            isValid: false,
+            error: monitoringResult.reason || 'Login attempt blocked by security system',
+            isLocked: !!monitoringResult.lockoutUntil,
+          };
+        }
+      }
 
       if (tenantId) {
         // Traditional login with tenant ID
         const user = await this.findUserByEmailAndTenant(email, tenantId);
 
         if (!user) {
+          // Handle failed login for security monitoring
+          if (request) {
+            await securityMonitoringService.handleFailedLogin(
+              email,
+              request,
+              'USER_NOT_FOUND',
+              tenantId
+            );
+          }
+
           return {
             isValid: false,
             error: 'User not found in specified tenant',
@@ -219,6 +252,16 @@ export class UserService {
         // Check if account is locked
         const isLocked = await PasswordSecurityService.isAccountLocked(user.id);
         if (isLocked) {
+          // Handle failed login for security monitoring
+          if (request) {
+            await securityMonitoringService.handleFailedLogin(
+              email,
+              request,
+              'ACCOUNT_LOCKED',
+              tenantId
+            );
+          }
+
           return {
             isValid: false,
             error: 'Account is temporarily locked due to too many failed login attempts',
@@ -233,6 +276,16 @@ export class UserService {
           const { isLocked: newLockStatus, attemptsRemaining } =
             await PasswordSecurityService.handleFailedLogin(user.id);
 
+          // Handle failed login for security monitoring
+          if (request) {
+            await securityMonitoringService.handleFailedLogin(
+              email,
+              request,
+              'INVALID_PASSWORD',
+              tenantId
+            );
+          }
+
           return {
             isValid: false,
             error: newLockStatus
@@ -245,6 +298,16 @@ export class UserService {
 
         // Reset failed login attempts on successful login
         await PasswordSecurityService.resetFailedLoginAttempts(user.id);
+
+        // Handle successful login for security monitoring
+        if (request) {
+          await securityMonitoringService.handleSuccessfulLogin(
+            user.id,
+            email,
+            request,
+            tenantId
+          );
+        }
 
         // Check if password needs to be changed
         const requiresPasswordChange = await PasswordSecurityService.isPasswordExpired(user.id);
@@ -259,6 +322,15 @@ export class UserService {
         const users = await this.findUserByEmail(email);
 
         if (users.length === 0) {
+          // Handle failed login for security monitoring
+          if (request) {
+            await securityMonitoringService.handleFailedLogin(
+              email,
+              request,
+              'USER_NOT_FOUND'
+            );
+          }
+
           return {
             isValid: false,
             error: 'No account found with this email address',
@@ -291,10 +363,29 @@ export class UserService {
         }
 
         if (!validUser) {
+          // Handle failed login for security monitoring
+          if (request) {
+            await securityMonitoringService.handleFailedLogin(
+              email,
+              request,
+              'INVALID_PASSWORD'
+            );
+          }
+
           return {
             isValid: false,
             error: 'Invalid password',
           };
+        }
+
+        // Handle successful login for security monitoring
+        if (request) {
+          await securityMonitoringService.handleSuccessfulLogin(
+            validUser.id,
+            email,
+            request,
+            validUser.tenantId
+          );
         }
 
         // If user has multiple tenants, return the primary one but include available tenants

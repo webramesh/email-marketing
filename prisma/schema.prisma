@@ -2110,3 +2110,237 @@ model PackageUsageHistory {
   @@index([isOverage])
   @@map("package_usage_history")
 }
+
+// Security Monitoring Models
+
+// Login Attempts Tracking
+model LoginAttempt {
+  id                String      @id @default(cuid())
+  email             String
+  ipAddress         String
+  userAgent         String?
+  success           Boolean
+  failureReason     String?     // INVALID_CREDENTIALS, ACCOUNT_LOCKED, IP_BLOCKED, etc.
+  location          Json?       // GeoIP data
+  riskScore         Float       @default(0)
+  blockedBySystem   Boolean     @default(false)
+  metadata          Json?       // Additional context
+  createdAt         DateTime    @default(now())
+
+  @@index([email])
+  @@index([ipAddress])
+  @@index([success])
+  @@index([createdAt])
+  @@index([riskScore])
+  @@index([blockedBySystem])
+  @@map("login_attempts")
+}
+
+// Security Threats Detection
+model SecurityThreat {
+  id                String      @id @default(cuid())
+  type              SecurityThreatType
+  severity          SecuritySeverity @default(LOW)
+  description       String
+  userId            String?
+  tenantId          String?
+  ipAddress         String?
+  userAgent         String?
+  location          Json?       // GeoIP data
+  metadata          Json?       // Additional threat context
+  isActive          Boolean     @default(true)
+  detectedAt        DateTime    @default(now())
+  resolvedAt        DateTime?
+  resolvedBy        String?     // User ID who resolved the threat
+  resolution        String?     // Resolution notes
+
+  @@index([type])
+  @@index([severity])
+  @@index([userId])
+  @@index([tenantId])
+  @@index([isActive])
+  @@index([detectedAt])
+  @@map("security_threats")
+}
+
+enum SecurityThreatType {
+  BRUTE_FORCE_ATTACK
+  CREDENTIAL_STUFFING
+  SUSPICIOUS_LOGIN_PATTERN
+  MULTIPLE_FAILED_LOGINS
+  UNUSUAL_LOCATION_ACCESS
+  RAPID_IP_CHANGES
+  CONCURRENT_SESSION_ABUSE
+  ACCOUNT_ENUMERATION
+  SESSION_HIJACKING
+  PRIVILEGE_ESCALATION
+  DATA_EXFILTRATION
+  AUTOMATED_ATTACK
+}
+
+// IP-based Access Control
+model IpRestriction {
+  id                String      @id @default(cuid())
+  ipAddress         String
+  type              IpRestrictionType
+  tenantId          String?     // null for global restrictions
+  reason            String?
+  expiresAt         DateTime?   // null for permanent restrictions
+  createdBy         String      // User ID who created the restriction
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([ipAddress])
+  @@index([type])
+  @@index([tenantId])
+  @@index([expiresAt])
+  @@index([createdBy])
+  @@map("ip_restrictions")
+}
+
+enum IpRestrictionType {
+  ALLOW
+  BLOCK
+}
+
+// Geolocation-based Access Control
+model GeolocationRestriction {
+  id                String      @id @default(cuid())
+  countryCode       String      // ISO 3166-1 alpha-2 country code
+  type              GeolocationRestrictionType
+  tenantId          String
+  reason            String?
+  createdBy         String      // User ID who created the restriction
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([countryCode])
+  @@index([type])
+  @@index([tenantId])
+  @@index([createdBy])
+  @@map("geolocation_restrictions")
+}
+
+enum GeolocationRestrictionType {
+  ALLOW
+  BLOCK
+}
+
+// Security Alerts and Notifications
+model SecurityAlert {
+  id                String      @id @default(cuid())
+  type              SecurityAlertType
+  severity          SecuritySeverity
+  title             String
+  description       String      @db.LongText
+  userId            String?     // Target user for the alert
+  tenantId          String?     // Target tenant for the alert
+  isRead            Boolean     @default(false)
+  readAt            DateTime?
+  actionRequired    Boolean     @default(false)
+  actionTaken       Boolean     @default(false)
+  actionTakenAt     DateTime?
+  actionTakenBy     String?     // User ID who took action
+  metadata          Json?       // Additional alert context
+  expiresAt         DateTime?   // Auto-dismiss date
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([type])
+  @@index([severity])
+  @@index([userId])
+  @@index([tenantId])
+  @@index([isRead])
+  @@index([actionRequired])
+  @@index([createdAt])
+  @@map("security_alerts")
+}
+
+enum SecurityAlertType {
+  ACCOUNT_LOCKOUT
+  SUSPICIOUS_LOGIN
+  BRUTE_FORCE_DETECTED
+  UNUSUAL_LOCATION
+  MULTIPLE_FAILED_LOGINS
+  IP_BLOCKED
+  GEOLOCATION_BLOCKED
+  SESSION_HIJACK_ATTEMPT
+  PRIVILEGE_ESCALATION
+  DATA_BREACH_ATTEMPT
+  SYSTEM_COMPROMISE
+}
+
+// Automated Security Responses
+model SecurityResponse {
+  id                String      @id @default(cuid())
+  triggerType       SecurityThreatType
+  responseType      SecurityResponseType
+  tenantId          String?     // null for global responses
+  isActive          Boolean     @default(true)
+  conditions        Json        // Conditions that trigger the response
+  actions           Json        // Actions to take when triggered
+  cooldownPeriod    Int?        // Seconds before response can trigger again
+  lastTriggeredAt   DateTime?
+  triggerCount      Int         @default(0)
+  createdBy         String      // User ID who created the response
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  @@index([triggerType])
+  @@index([responseType])
+  @@index([tenantId])
+  @@index([isActive])
+  @@index([createdBy])
+  @@map("security_responses")
+}
+
+enum SecurityResponseType {
+  IMMEDIATE
+  DELAYED
+  ESCALATED
+  CONDITIONAL
+}
+
+// Security Configuration per Tenant
+model SecurityConfig {
+  id                        String      @id @default(cuid())
+  tenantId                  String      @unique
+  
+  // Login attempt limits
+  maxFailedAttempts         Int         @default(5)
+  lockoutDuration           Int         @default(900) // 15 minutes in seconds
+  bruteForceThreshold       Int         @default(10)
+  bruteForceWindow          Int         @default(300) // 5 minutes in seconds
+  
+  // Session security
+  requireMfaForHighRisk     Boolean     @default(true)
+  highRiskThreshold         Int         @default(30)
+  sessionTimeoutWarning     Int         @default(300) // 5 minutes in seconds
+  maxConcurrentSessions     Int         @default(5)
+  
+  // IP and location restrictions
+  enableIpRestrictions      Boolean     @default(false)
+  enableGeoRestrictions     Boolean     @default(false)
+  allowedCountries          Json?       // Array of allowed country codes
+  blockedCountries          Json?       // Array of blocked country codes
+  
+  // Monitoring settings
+  enableThreatDetection     Boolean     @default(true)
+  enableAnomalyDetection    Boolean     @default(true)
+  alertThreshold            SecuritySeverity @default(MEDIUM)
+  
+  // Automated responses
+  enableAutoResponse        Boolean     @default(false)
+  autoResponseActions       Json?       // Array of automated response configurations
+  
+  // Notification settings
+  securityEmailAlerts       Boolean     @default(true)
+  alertRecipients           Json?       // Array of email addresses for alerts
+  
+  createdAt                 DateTime    @default(now())
+  updatedAt                 DateTime    @updatedAt
+
+  @@index([tenantId])
+  @@map("security_configs")
+}
+
