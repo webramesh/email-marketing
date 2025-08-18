@@ -18,6 +18,12 @@ model Tenant {
   name              String
   subdomain         String              @unique
   customDomain      String?             @unique
+  
+  // Verification fields
+  isVerified        Boolean             @default(false)
+  verifiedAt        DateTime?
+  verificationNotes String?             @db.LongText
+  
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
   users             User[]
@@ -53,6 +59,11 @@ model Tenant {
   purchasedPackages PackagePurchase[]
   packageSales      PackageSale[]
   packageReviews    PackageReview[]
+  
+  // Onboarding relationships
+  userInvitations   UserInvitation[]
+  adminVerifications AdminCompanyVerification[]
+  userOnboardings   UserOnboarding[]
 
   @@map("tenants")
 }
@@ -90,6 +101,8 @@ model User {
   
   // Account status
   isActive          Boolean     @default(true)
+  emailVerified     Boolean     @default(false)
+  emailVerifiedAt   DateTime?
   deactivatedAt     DateTime?
   deactivationReason String?
   reactivatedAt     DateTime?
@@ -127,6 +140,9 @@ model User {
   
   // OAuth relationships
   accounts          Account[]
+  
+  // Onboarding relationships
+  onboardings       UserOnboarding[]
 
   @@unique([email, tenantId])
   @@index([tenantId])
@@ -1195,9 +1211,17 @@ model Segment {
 model EmailVerification {
   id                String      @id @default(cuid())
   email             String
-  status            VerificationStatus
+  status            EmailVerificationStatus @default(PENDING)
   verificationData  Json?
   verifiedAt        DateTime?
+  
+  // Onboarding-specific fields
+  tokenHash         String?     @unique
+  expiresAt         DateTime?
+  userId            String?
+  verificationType  String?     // REGISTRATION, EMAIL_CHANGE, INVITATION
+  metadata          Json?       @default("{}")
+  
   createdAt         DateTime    @default(now())
   updatedAt         DateTime    @updatedAt
   tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
@@ -1206,6 +1230,8 @@ model EmailVerification {
   @@unique([email, tenantId])
   @@index([tenantId])
   @@index([status])
+  @@index([tokenHash])
+  @@index([verificationType])
   @@map("email_verifications")
 }
 
@@ -1245,6 +1271,110 @@ enum BounceComplaintType {
   SOFT_BOUNCE
   COMPLAINT
   BLOCK
+}
+
+// User Onboarding Models
+
+// Enhanced Email Verification for onboarding
+enum EmailVerificationStatus {
+  PENDING
+  VERIFIED
+  EXPIRED
+  FAILED
+}
+
+// User Invitations
+model UserInvitation {
+  id                String      @id @default(cuid())
+  email             String
+  role              UserRole
+  tenantId          String
+  invitedBy         String
+  packageId         String?
+  customMessage     String?     @db.LongText
+  tokenHash         String      @unique
+  expiresAt         DateTime
+  status            UserInvitationStatus @default(PENDING)
+  acceptedAt        DateTime?
+  acceptedBy        String?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  
+  // Relations
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([email])
+  @@index([status])
+  @@index([tokenHash])
+  @@map("user_invitations")
+}
+
+enum UserInvitationStatus {
+  PENDING
+  ACCEPTED
+  EXPIRED
+  CANCELLED
+}
+
+// User Onboarding Flows
+model UserOnboarding {
+  id                String      @id @default(cuid())
+  userId            String
+  tenantId          String
+  flowType          String      // ADMIN_SETUP, CUSTOMER_PACKAGE, USER_REGISTRATION
+  currentStep       Int         @default(1)
+  totalSteps        Int
+  stepData          Json        @default("{}")
+  isCompleted       Boolean     @default(false)
+  completedAt       DateTime?
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  
+  // Relations
+  user              User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([tenantId])
+  @@index([flowType])
+  @@index([isCompleted])
+  @@map("user_onboarding")
+}
+
+// Admin Company Verification
+model AdminCompanyVerification {
+  id                String      @id @default(cuid())
+  tenantId          String
+  companyName       String
+  businessType      String
+  contactEmail      String
+  contactPhone      String?
+  businessAddress   Json
+  businessDocuments Json        @default("[]")
+  verificationNotes String?     @db.LongText
+  status            AdminVerificationStatus @default(PENDING)
+  submittedAt       DateTime    @default(now())
+  reviewedBy        String?
+  reviewedAt        DateTime?
+  reviewNotes       String?     @db.LongText
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+  
+  // Relations
+  tenant            Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([status])
+  @@index([reviewedBy])
+  @@map("admin_company_verifications")
+}
+
+enum AdminVerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  UNDER_REVIEW
 }
 
 // API Keys and Webhooks

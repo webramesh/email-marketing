@@ -1,11 +1,5 @@
 import { NextRequest, NextResponse } from "next/server"
 import { auth } from "@/lib/auth"
-import { enforceMFA, mfaPageMiddleware } from "@/lib/mfa-middleware"
-import { rbacPageMiddleware } from "@/lib/rbac/authorization"
-import { Resource, Action } from "@/lib/rbac/permissions"
-import { tenantMiddleware, middlewareConfigs } from "@/lib/tenant/middleware"
-import { enhancedSessionMiddleware } from "@/lib/enhanced-session-middleware"
-import { passwordChangeMiddleware } from "@/lib/password-change-middleware"
 
 // Define resource paths for RBAC enforcement
 const resourcePathMap = {
@@ -131,42 +125,10 @@ export default async function middleware(request: NextRequest) {
     return NextResponse.redirect(redirectUrl)
   }
 
-  // Skip MFA enforcement for MFA-related API routes
-  if (pathname.startsWith("/api/auth/mfa/") && 
-      !pathname.startsWith("/api/auth/mfa/disable")) {
-    return NextResponse.next()
-  }
-  
-  // Apply enhanced session management
-  const sessionResponse = await enhancedSessionMiddleware(request)
-  if (sessionResponse) {
-    return sessionResponse
-  }
-
-  // Apply password change middleware
-  const passwordResponse = await passwordChangeMiddleware(request)
-  if (passwordResponse) {
-    return passwordResponse
-  }
-
-  // Enforce MFA for sensitive API operations
-  if (pathname.startsWith("/api/")) {
-    const mfaResponse = await enforceMFA(request)
-    if (mfaResponse) {
-      return mfaResponse
-    }
-  } else {
-    // Enforce MFA for sensitive frontend pages
-    const mfaPageResponse = await mfaPageMiddleware(request)
-    if (mfaPageResponse) {
-      return mfaPageResponse
-    }
-    
-    // Enforce RBAC for frontend pages
-    const rbacResponse = await rbacPageMiddleware(request, resourcePathMap)
-    if (rbacResponse) {
-      return rbacResponse
-    }
+  // Basic session validation - more advanced features will be handled in API routes
+  // Check if user needs to change password
+  if (session.user.requiresPasswordChange && !pathname.startsWith("/password-change-required") && !pathname.startsWith("/api/auth/")) {
+    return NextResponse.redirect(new URL("/password-change-required", request.url))
   }
 
   return NextResponse.next()

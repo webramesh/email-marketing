@@ -22,9 +22,7 @@ const nextConfig: NextConfig = {
     
     return config;
   },
-  experimental: {
-    serverComponentsExternalPackages: ['bull', 'ioredis', 'redis'],
-  },
+  serverExternalPackages: ['bull', 'ioredis', 'redis'],
 };
 
 export default nextConfig;
